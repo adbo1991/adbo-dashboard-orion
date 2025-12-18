@@ -1,19 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-ADBO SMART | Dashboard de Generación
+ADBO SMART – CIP – Reporte de Generación Orión Bloque 52
 Autor: Alexander Becerra
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.io as pio
+
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
-import tempfile
-import os
 from datetime import datetime
+import tempfile
 
 # --------------------------------------------------
 # Configuración general
@@ -24,35 +23,32 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# CSS (contraste OK iPhone)
+# CSS (alto contraste OK iPhone)
 # --------------------------------------------------
-st.markdown(
-    """
-    <style>
-    div[data-testid="metric-container"] {
-        background-color: #ffffff;
-        border-radius: 14px;
-        padding: 18px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-        text-align: center;
-    }
-    div[data-testid="metric-container"] label {
-        color: #6b7280 !important;
-        font-size: 0.85rem;
-        font-weight: 500;
-    }
-    div[data-testid="metric-container"] div {
-        color: #111827 !important;
-        font-size: 1.6rem;
-        font-weight: 700;
-    }
-    body {
-        background-color: #0f172a;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+st.markdown("""
+<style>
+div[data-testid="metric-container"] {
+    background-color: #ffffff;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    text-align: center;
+}
+div[data-testid="metric-container"] label {
+    color: #6b7280 !important;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+div[data-testid="metric-container"] div {
+    color: #111827 !important;
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+body {
+    background-color: #0f172a;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # --------------------------------------------------
 # Funciones auxiliares
@@ -60,7 +56,7 @@ st.markdown(
 def format_number(value, currency=False, decimals=2):
     if pd.isna(value):
         return "—"
-    formatted = f"{value:,.{decimals}f}"
+    formatted = f"{value:,.{decimals}f}"          # 23,241,321.20
     parts = formatted.split(",")
     if len(parts) > 2:
         formatted = "'".join(parts[:-1]) + "," + parts[-1]
@@ -76,81 +72,111 @@ def delta_percent(current, previous):
 
 
 # --------------------------------------------------
-# Exportar PDF (KPIs + Gráficos)
+# Exportar PDF (KPIs + Tablas)
 # --------------------------------------------------
-def export_pdf(
-    kpi_hist, kpi_now,
-    fig_barras, fig_total, fig_consumo
+def export_pdf_kpis_tables(
+    kpi_hist,
+    kpi_periodo,
+    df_gen_loc,
+    df_gen_dia,
+    df_cons_dia,
+    fecha_min,
+    fecha_max
 ):
-    with tempfile.TemporaryDirectory() as tmpdir:
-
-        bar_path = os.path.join(tmpdir, "bar.png")
-        total_path = os.path.join(tmpdir, "total.png")
-        cons_path = os.path.join(tmpdir, "cons.png")
-
-        pio.write_image(fig_barras, bar_path, width=900, height=500)
-        pio.write_image(fig_total, total_path, width=900, height=500)
-        pio.write_image(fig_consumo, cons_path, width=900, height=500)
-
-        pdf_path = os.path.join(tmpdir, "ADBO_SMART_Reporte_Generacion.pdf")
-        c = canvas.Canvas(pdf_path, pagesize=A4)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        c = canvas.Canvas(tmp.name, pagesize=A4)
         w, h = A4
 
         # HEADER
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(2 * cm, h - 2 * cm,
-                     "ADBO SMART – CIP – Reporte de Generación")
+        c.setFont("Helvetica-Bold", 15)
+        c.drawString(2 * cm, h - 2 * cm, "ADBO SMART – CIP – Reporte de Generación")
         c.setFont("Helvetica", 11)
-        c.drawString(2 * cm, h - 3 * cm,
-                     "Orión Bloque 52")
+        c.drawString(2 * cm, h - 3 * cm, "Orión Bloque 52")
+
         c.setFont("Helvetica", 9)
         c.drawString(2 * cm, h - 3.8 * cm,
+                     f"Período: {fecha_min.date()} a {fecha_max.date()}")
+        c.drawString(2 * cm, h - 4.4 * cm,
                      f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
-        # KPIs HISTÓRICOS
-        y = h - 5 * cm
+        y = h - 6 * cm
+
+        # KPIs históricos
         c.setFont("Helvetica-Bold", 12)
         c.drawString(2 * cm, y, "KPIs Históricos")
-        c.setFont("Helvetica", 10)
+        y -= 0.6 * cm
 
+        c.setFont("Helvetica", 10)
         for k, v in kpi_hist.items():
-            y -= 0.7 * cm
             c.drawString(2 * cm, y, f"{k}: {v}")
+            y -= 0.5 * cm
 
-        # KPIs PERÍODO
-        y -= 1.2 * cm
+        # KPIs período
+        y -= 0.6 * cm
         c.setFont("Helvetica-Bold", 12)
-        c.drawString(2 * cm, y, "KPIs Período Seleccionado")
+        c.drawString(2 * cm, y, "KPIs del Período Seleccionado")
+        y -= 0.6 * cm
+
         c.setFont("Helvetica", 10)
-
-        for k, v in kpi_now.items():
-            y -= 0.7 * cm
+        for k, v in kpi_periodo.items():
             c.drawString(2 * cm, y, f"{k}: {v}")
+            y -= 0.5 * cm
 
-        # GRÁFICOS
+        # Tabla: Generación por locación
         c.showPage()
-        c.drawImage(bar_path, 2 * cm, h - 9 * cm, width=17 * cm, height=7 * cm)
-        c.drawImage(total_path, 2 * cm, h - 17 * cm, width=17 * cm, height=7 * cm)
+        y = h - 2 * cm
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(2 * cm, y, "Generación por Locación")
+        y -= 1 * cm
 
+        c.setFont("Helvetica", 9)
+        for _, r in df_gen_loc.iterrows():
+            c.drawString(2 * cm, y,
+                         f"{r['LOCACIÓN']}: {format_number(r['TOTAL GENERADO KW-H'], decimals=0)}")
+            y -= 0.45 * cm
+
+        # Tabla: Generación diaria
         c.showPage()
-        c.drawImage(cons_path, 2 * cm, h - 9 * cm, width=17 * cm, height=7 * cm)
+        y = h - 2 * cm
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(2 * cm, y, "Generación Diaria")
+        y -= 1 * cm
+
+        c.setFont("Helvetica", 9)
+        for _, r in df_gen_dia.iterrows():
+            c.drawString(2 * cm, y,
+                         f"{r['FECHA DEL REGISTRO'].date()} → "
+                         f"{format_number(r['TOTAL GENERADO KW-H'], decimals=0)}")
+            y -= 0.45 * cm
+
+        # Tabla: Consumo diario
+        c.showPage()
+        y = h - 2 * cm
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(2 * cm, y, "Consumo Diario")
+        y -= 1 * cm
+
+        c.setFont("Helvetica", 9)
+        for _, r in df_cons_dia.iterrows():
+            c.drawString(2 * cm, y,
+                         f"{r['FECHA DEL REGISTRO'].date()} → "
+                         f"{format_number(r['CONSUMO (GLS)'])}")
+            y -= 0.45 * cm
+
+        # Footer
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(2 * cm, 1.8 * cm,
+                     "ADBO SMART · Inteligencia de Negocios & IA")
 
         c.save()
-        return pdf_path
+        return tmp.name
 
 
 # --------------------------------------------------
-# Título + Botón PDF
+# Título
 # --------------------------------------------------
-col_t, col_b = st.columns([6, 1])
-
-with col_t:
-    st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
-    st.caption("Datos actualizados automáticamente desde Google Sheets")
-
-with col_b:
-    st.markdown("### ")
-    export = st.button("📄 Exportar PDF")
+st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
+st.caption("Datos actualizados automáticamente desde Google Sheets")
 
 # --------------------------------------------------
 # Carga de datos
@@ -163,16 +189,14 @@ def load_data():
 
     df = pd.read_csv(url, engine="python", decimal=",", thousands=".", on_bad_lines="skip")
 
-    df = df[(df["REGISTRO CORRECTO"] == 1) & (df["POTENCIA ACTIVA (KW)"].notna())]
+    df = df[(df["REGISTRO CORRECTO"] == 1) &
+            (df["POTENCIA ACTIVA (KW)"].notna())]
 
-    df["FECHA DEL REGISTRO"] = pd.to_datetime(df["FECHA DEL REGISTRO"], dayfirst=True)
+    df["FECHA DEL REGISTRO"] = pd.to_datetime(df["FECHA DEL REGISTRO"],
+                                              dayfirst=True, errors="coerce")
 
-    for c in [
-        "TOTAL GENERADO KW-H",
-        "CONSUMO (GLS)",
-        "COSTOS DE GENERACIÓN USD",
-        "VALOR POR KW GENERADO"
-    ]:
+    for c in ["TOTAL GENERADO KW-H", "CONSUMO (GLS)",
+              "COSTOS DE GENERACIÓN USD", "VALOR POR KW GENERADO"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
@@ -181,84 +205,85 @@ def load_data():
 df = load_data()
 
 # --------------------------------------------------
-# KPIs HISTÓRICOS
+# KPIs históricos
 # --------------------------------------------------
-st.markdown("### 🗂️ KPIs Históricos")
+st.markdown("### 📊 KPIs Históricos (acumulado total)")
 
 h1, h2, h3, h4 = st.columns(4)
-
 h1.metric("🔋 Total Generado", format_number(df["TOTAL GENERADO KW-H"].sum(), decimals=0))
 h2.metric("⛽ Consumo Total", format_number(df["CONSUMO (GLS)"].sum()))
 h3.metric("💰 Costos Totales", format_number(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
 h4.metric("⚡ Valor Prom. KW", format_number(df["VALOR POR KW GENERADO"].mean(), currency=True))
 
+st.markdown("---")
+
 # --------------------------------------------------
-# Filtros
+# Filtro rápido
 # --------------------------------------------------
 fecha_max = df["FECHA DEL REGISTRO"].max()
 fecha_min = fecha_max - pd.Timedelta(days=6)
 
-if "only_last" not in st.session_state:
-    st.session_state.only_last = False
-
 if st.button("📌 Último registro"):
-    st.session_state.only_last = not st.session_state.only_last
-
-if st.session_state.only_last:
     fecha_min = fecha_max
 
-df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min) & (df["FECHA DEL REGISTRO"] <= fecha_max)]
+df_filtrado = df[(df["FECHA DEL REGISTRO"] >= fecha_min) &
+                 (df["FECHA DEL REGISTRO"] <= fecha_max)]
 
 # --------------------------------------------------
-# KPIs FILTRADOS + COMPARATIVO
+# KPIs período
 # --------------------------------------------------
-st.markdown("### 📊 KPIs Período Seleccionado")
+st.markdown("### 📊 KPIs del período seleccionado")
 
 k1, k2, k3, k4 = st.columns(4)
 
-gen_now = df_f["TOTAL GENERADO KW-H"].sum()
-con_now = df_f["CONSUMO (GLS)"].sum()
-cost_now = df_f["COSTOS DE GENERACIÓN USD"].sum()
-val_now = df_f["VALOR POR KW GENERADO"].mean()
+gen_now = df_filtrado["TOTAL GENERADO KW-H"].sum()
+con_now = df_filtrado["CONSUMO (GLS)"].sum()
+cost_now = df_filtrado["COSTOS DE GENERACIÓN USD"].sum()
+val_now = df_filtrado["VALOR POR KW GENERADO"].mean()
 
 k1.metric("🔋 Generación", format_number(gen_now, decimals=0))
 k2.metric("⛽ Consumo", format_number(con_now))
 k3.metric("💰 Costos", format_number(cost_now, currency=True))
 k4.metric("⚡ Valor prom. KW", format_number(val_now, currency=True))
 
-# --------------------------------------------------
-# Gráficos
-# --------------------------------------------------
-gen_fecha = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
-gen_total = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
-consumo = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
-
-fig_barras = px.bar(gen_fecha, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H", color="LOCACIÓN")
-fig_total = px.line(gen_total, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H", markers=True)
-fig_consumo = px.line(consumo, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)", markers=True)
-
-st.plotly_chart(fig_barras, use_container_width=True)
-st.plotly_chart(fig_total, use_container_width=True)
-st.plotly_chart(fig_consumo, use_container_width=True)
+st.markdown("---")
 
 # --------------------------------------------------
-# Descargar PDF
+# Agregaciones
 # --------------------------------------------------
-if export:
-    pdf = export_pdf(
+gen_fecha = df_filtrado.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"],
+                                as_index=False)["TOTAL GENERADO KW-H"].sum()
+
+gen_total = df_filtrado.groupby("FECHA DEL REGISTRO",
+                                as_index=False)["TOTAL GENERADO KW-H"].sum()
+
+consumo = df_filtrado.groupby("FECHA DEL REGISTRO",
+                              as_index=False)["CONSUMO (GLS)"].sum()
+
+# --------------------------------------------------
+# Botón Exportar PDF
+# --------------------------------------------------
+st.markdown("### 📤 Exportar")
+
+if st.button("📄 Exportar KPIs + Tablas (PDF)"):
+    pdf = export_pdf_kpis_tables(
         {
             "Total Generado": format_number(df["TOTAL GENERADO KW-H"].sum(), decimals=0),
             "Consumo Total": format_number(df["CONSUMO (GLS)"].sum()),
             "Costos Totales": format_number(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True),
-            "Valor Prom. KW": format_number(df["VALOR POR KW GENERADO"].mean(), currency=True)
+            "Valor Prom. KW": format_number(df["VALOR POR KW GENERADO"].mean(), currency=True),
         },
         {
-            "Generación": format_number(gen_now, decimals=0),
-            "Consumo": format_number(con_now),
-            "Costos": format_number(cost_now, currency=True),
-            "Valor Prom. KW": format_number(val_now, currency=True)
+            "Generación (período)": format_number(gen_now, decimals=0),
+            "Consumo (período)": format_number(con_now),
+            "Costos (período)": format_number(cost_now, currency=True),
+            "Valor Prom. KW (período)": format_number(val_now, currency=True),
         },
-        fig_barras, fig_total, fig_consumo
+        gen_fecha.groupby("LOCACIÓN", as_index=False)["TOTAL GENERADO KW-H"].sum(),
+        gen_total,
+        consumo,
+        fecha_min,
+        fecha_max
     )
 
     with open(pdf, "rb") as f:
@@ -269,4 +294,5 @@ if export:
             mime="application/pdf"
         )
 
+# --------------------------------------------------
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
