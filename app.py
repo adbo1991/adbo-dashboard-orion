@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Dec 17 20:39:13 2025
-
-@author: ALEXANDER BECERRA
+ADBO SMART | Dashboard de Generación
+Autor: Alexander Becerra
 """
-
-# -*- coding: utf-8 -*-
 
 import streamlit as st
 import pandas as pd
@@ -19,6 +16,26 @@ st.set_page_config(
     layout="wide"
 )
 
+# --------------------------------------------------
+# Branding visual (CSS)
+# --------------------------------------------------
+st.markdown(
+    """
+    <style>
+    .stMetric {
+        background-color: #f5f6f7;
+        padding: 12px;
+        border-radius: 10px;
+        text-align: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --------------------------------------------------
+# Encabezado
+# --------------------------------------------------
 st.title("ADBO SMART · Reporte de Generación")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
@@ -64,6 +81,23 @@ def load_data():
     return df
 
 df = load_data()
+
+# --------------------------------------------------
+# KPIs PRINCIPALES
+# --------------------------------------------------
+total_generado = df["TOTAL GENERADO KW-H"].sum()
+total_consumo = df["CONSUMO (GLS)"].sum()
+total_costos = df["COSTOS DE GENERACIÓN USD"].sum()
+valor_kw = df["VALOR POR KW GENERADO"].mean()
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("🔋 Total Generado (KW-H)", f"{total_generado:,.0f}")
+col2.metric("⛽ Consumo Total (GLS)", f"{total_consumo:,.0f}")
+col3.metric("💰 Costos Totales (USD)", f"${total_costos:,.2f}")
+col4.metric("⚡ Valor Promedio por KW", f"${valor_kw:,.3f}")
+
+st.markdown("---")
 
 # --------------------------------------------------
 # Agregaciones
