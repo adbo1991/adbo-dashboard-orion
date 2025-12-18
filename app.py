@@ -247,14 +247,26 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
         cols = st.columns(min(4, len(gens)))
 
         for i, gen in enumerate(gens):
+            df_gen = df_loc[df_loc["GENERADOR"] == gen]
+        
+            if df_gen.empty:
+                continue
+        
+            # Valor según modo
+            if st.session_state.modo == "last":
+                valor = (
+                    df_gen
+                    .sort_values("FECHA DEL REGISTRO")["%CARGA PRIME"]
+                    .iloc[-1]
+                )
+            else:
+                valor = df_gen["%CARGA PRIME"].mean()
+        
+            # ❌ NO mostrar si es 0, negativo o NaN
+            if pd.isna(valor) or valor <= 0:
+                continue
+        
             with cols[i % len(cols)]:
-                df_gen = df_loc[df_loc["GENERADOR"] == gen]
-
-                if st.session_state.modo == "last":
-                    valor = df_gen.sort_values("FECHA DEL REGISTRO")["%CARGA PRIME"].iloc[-1]
-                else:
-                    valor = df_gen["%CARGA PRIME"].mean()
-
                 st.plotly_chart(
                     gauge_carga(valor * 100, gen),
                     use_container_width=True
