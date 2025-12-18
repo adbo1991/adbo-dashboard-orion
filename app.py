@@ -8,6 +8,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import timedelta
 
 # --------------------------------------------------
 # CONFIGURACIÓN GENERAL
@@ -18,7 +19,7 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# CSS
+# ESTILOS (iPhone OK)
 # --------------------------------------------------
 st.markdown("""
 <style>
@@ -42,7 +43,7 @@ div[data-testid="metric-container"] div {
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------
-# FUNCIONES
+# FUNCIONES AUXILIARES
 # --------------------------------------------------
 def format_number(value, currency=False, decimals=2):
     if pd.isna(value):
@@ -55,27 +56,28 @@ def format_number(value, currency=False, decimals=2):
 
 
 def delta_percent(current, previous):
-    if pd.isna(previous) or previous == 0:
+    if previous in [0, None] or pd.isna(previous):
         return "—"
-    d = (current - previous) / previous * 100
-    arrow = "↑" if d >= 0 else "↓"
-    return f"{arrow} {abs(d):.1f}%"
+    delta = (current - previous) / previous * 100
+    arrow = "↑" if delta >= 0 else "↓"
+    return f"{arrow} {abs(delta):.1f}%"
 
 
-def gauge_chart(value, title):
+def gauge(value, title):
     return go.Figure(go.Indicator(
         mode="gauge+number",
         value=value,
-        number={"suffix": "%"},
-        title={"text": title},
+        number={"suffix": "%", "font": {"size": 34}},
+        title={"text": title, "font": {"size": 15}},
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": "#2563eb"},
             "steps": [
-                {"range": [0, 60], "color": "#fee2e2"},
-                {"range": [60, 85], "color": "#fef3c7"},
-                {"range": [85, 100], "color": "#dcfce7"},
+                {"range": [0, 60], "color": "#DCFCE7"},   # verde pálido
+                {"range": [60, 80], "color": "#4ADE80"}, # verde grass
+                {"range": [80, 95], "color": "#FACC15"}, # amarillo
+                {"range": [95, 100], "color": "#DC2626"} # rojo
             ],
+            "bar": {"color": "#065F46"}
         }
     ))
 
@@ -94,22 +96,14 @@ def load_data():
     gid = 540053809
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
-    df = pd.read_csv(
-        url,
-        engine="python",
-        decimal=",",
-        thousands=".",
-        on_bad_lines="skip"
-    )
+    df = pd.read_csv(url, engine="python", decimal=",", thousands=".", on_bad_lines="skip")
 
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
         (df["POTENCIA ACTIVA (KW)"].notna())
     ]
 
-    df["FECHA DEL REGISTRO"] = pd.to_datetime(
-        df["FECHA DEL REGISTRO"], dayfirst=True, errors="coerce"
-    )
+    df["FECHA DEL REGISTRO"] = pd.to_datetime(df["FECHA DEL REGISTRO"], dayfirst=True)
 
     for c in [
         "TOTAL GENERADO KW-H",
@@ -126,31 +120,43 @@ def load_data():
 df = load_data()
 
 # --------------------------------------------------
+# KPIs HISTÓRICOS
+# --------------------------------------------------
+st.markdown("### 📊 KPIs Históricos (acumulado total)")
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("🔋 Total Generado", format_number(df["TOTAL GENERADO KW-H"].sum(), decimals=0))
+c2.metric("⛽ Consumo Total", format_number(df["CONSUMO (GLS)"].sum()))
+c3.metric("💰 Costos Totales", format_number(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
+c4.metric("⚡ Valor Prom. KW", format_number(df["VALOR POR KW GENERADO"].mean(), currency=True))
+
+st.markdown("---")
+
+# --------------------------------------------------
 # FILTROS
 # --------------------------------------------------
-fecha_max = df["FECHA DEL REGISTRO"].max()
-fecha_min_default = fecha_max - pd.Timedelta(days=6)
-
 if "modo" not in st.session_state:
     st.session_state.modo = "7d"
 
-b1, b2, b3 = st.columns(3)
+col_f1, col_f2, col_f3 = st.columns([1,1,2])
 
-if b1.button("📅 Últimos 7 días"):
+if col_f1.button("🗓 Últimos 7 días"):
     st.session_state.modo = "7d"
 
-if b2.button("📌 Último registro"):
+if col_f2.button("📌 Último registro"):
     st.session_state.modo = "last"
 
-if b3.button("♻ Reset filtros"):
+if col_f3.button("🔄 Reset filtros"):
     st.session_state.modo = "7d"
+
+fecha_max = df["FECHA DEL REGISTRO"].max()
 
 if st.session_state.modo == "last":
     fecha_min = fecha_max
+    st.info(f"📌 Mostrando último registro: {fecha_max.date()}")
 else:
-    fecha_min = fecha_min_default
-
-st.info(f"📆 Período activo: {fecha_min.date()} → {fecha_max.date()}")
+    fecha_min = fecha_max - timedelta(days=6)
+    st.info(f"🗓 Período activo: {fecha_min.date()} → {fecha_max.date()}")
 
 df_f = df[
     (df["FECHA DEL REGISTRO"] >= fecha_min) &
@@ -158,62 +164,73 @@ df_f = df[
 ]
 
 # --------------------------------------------------
-# 🔌 CARGA PRIME (%) POR LOCACIÓN
+# KPIs FILTRADOS
+# --------------------------------------------------
+st.markdown("### 📊 KPIs del período seleccionado")
+
+k1, k2, k3, k4 = st.columns(4)
+
+k1.metric("🔋 Generación", format_number(df_f["TOTAL GENERADO KW-H"].sum(), decimals=0))
+k2.metric("⛽ Consumo", format_number(df_f["CONSUMO (GLS)"].sum()))
+k3.metric("💰 Costos", format_number(df_f["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
+k4.metric("⚡ Valor prom. KW", format_number(df_f["VALOR POR KW GENERADO"].mean(), currency=True))
+
+st.markdown("---")
+
+# --------------------------------------------------
+# VELOCÍMETROS CARGA PRIME
 # --------------------------------------------------
 st.markdown("### 🔌 Carga Prime (%) por Locación")
 
-locaciones = df_f["LOCACIÓN"].dropna().unique()
-cols = st.columns(len(locaciones))
+locs = df_f["LOCACIÓN"].dropna().unique()
+cols = st.columns(len(locs))
 
-for i, loc in enumerate(locaciones):
-    df_loc = df_f[df_f["LOCACIÓN"] == loc]
+for i, loc in enumerate(locs):
+    dfl = df_f[df_f["LOCACIÓN"] == loc]
 
     if st.session_state.modo == "last":
-        value = df_loc.sort_values("FECHA DEL REGISTRO")["%CARGA PRIME"].iloc[-1]
+        val = dfl.sort_values("FECHA DEL REGISTRO")["%CARGA PRIME"].iloc[-1]
     else:
-        value = df_loc["%CARGA PRIME"].mean()
+        val = dfl["%CARGA PRIME"].mean()
 
     with cols[i]:
-        st.plotly_chart(
-            gauge_chart(value, f"{loc}"),
-            use_container_width=True
-        )
+        st.plotly_chart(gauge(val * 100, loc), use_container_width=True)
+
+st.markdown("---")
 
 # --------------------------------------------------
 # GRÁFICOS
 # --------------------------------------------------
-gen_loc = df_f.groupby(
-    ["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False
-)["TOTAL GENERADO KW-H"].sum()
+gen_loc = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
 
-gen_total = df_f.groupby(
-    "FECHA DEL REGISTRO", as_index=False
-)["TOTAL GENERADO KW-H"].sum()
-
-consumo = df_f.groupby(
-    "FECHA DEL REGISTRO", as_index=False
-)["CONSUMO (GLS)"].sum()
-
-st.plotly_chart(
-    px.bar(
-        gen_loc,
-        x="FECHA DEL REGISTRO",
-        y="TOTAL GENERADO KW-H",
-        color="LOCACIÓN",
-        barmode="group",
-        title="Generación por Locación"
-    ),
-    use_container_width=True
+fig_bar = px.bar(
+    gen_loc,
+    x="FECHA DEL REGISTRO",
+    y="TOTAL GENERADO KW-H",
+    color="LOCACIÓN",
+    barmode="group",
+    title="Generación por Locación"
 )
 
-st.plotly_chart(
-    px.line(gen_total, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H", markers=True),
-    use_container_width=True
+fig_line = px.line(
+    df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum(),
+    x="FECHA DEL REGISTRO",
+    y="TOTAL GENERADO KW-H",
+    markers=True,
+    title="Generación Total Diaria"
 )
 
-st.plotly_chart(
-    px.line(consumo, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)", markers=True),
-    use_container_width=True
+fig_cons = px.line(
+    df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum(),
+    x="FECHA DEL REGISTRO",
+    y="CONSUMO (GLS)",
+    markers=True,
+    title="Consumo Diario"
 )
 
+st.plotly_chart(fig_bar, use_container_width=True)
+st.plotly_chart(fig_line, use_container_width=True)
+st.plotly_chart(fig_cons, use_container_width=True)
+
+st.markdown("---")
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
