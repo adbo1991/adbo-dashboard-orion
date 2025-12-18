@@ -4,6 +4,7 @@ ADBO SMART | Dashboard de Generación
 Autor: Alexander Becerra
 """
 
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -12,21 +13,38 @@ import plotly.express as px
 # Configuración general
 # --------------------------------------------------
 st.set_page_config(
-    page_title="ADBO SMART | Dashboard de Generación",
+    page_title="ADBO SMART | Reporte de Generación",
     layout="wide"
 )
 
 # --------------------------------------------------
-# Branding visual (CSS)
+# CSS (contraste OK en iPhone)
 # --------------------------------------------------
 st.markdown(
     """
     <style>
-    .stMetric {
-        background-color: #f5f6f7;
-        padding: 12px;
-        border-radius: 10px;
+    div[data-testid="metric-container"] {
+        background-color: #ffffff;
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
         text-align: center;
+    }
+
+    div[data-testid="metric-container"] label {
+        color: #6b7280 !important;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    div[data-testid="metric-container"] div {
+        color: #111827 !important;
+        font-size: 1.6rem;
+        font-weight: 700;
+    }
+
+    body {
+        background-color: #0f172a;
     }
     </style>
     """,
@@ -34,19 +52,18 @@ st.markdown(
 )
 
 # --------------------------------------------------
-# Encabezado
+# Títulos
 # --------------------------------------------------
 st.title("ADBO SMART · Reporte de Generación")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
 # --------------------------------------------------
-# Carga de datos (cacheada)
+# Carga de datos
 # --------------------------------------------------
-@st.cache_data(ttl=900)  # refresca cada 15 minutos
+@st.cache_data(ttl=900)
 def load_data():
     sheet_id = "1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I"
     gid = 540053809
-
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
     df = pd.read_csv(
@@ -68,14 +85,12 @@ def load_data():
         errors="coerce"
     )
 
-    num_cols = [
+    for c in [
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO"
-    ]
-
-    for c in num_cols:
+    ]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
@@ -83,45 +98,34 @@ def load_data():
 df = load_data()
 
 # --------------------------------------------------
-# KPIs PRINCIPALES
+# KPIs
 # --------------------------------------------------
-total_generado = df["TOTAL GENERADO KW-H"].sum()
-total_consumo = df["CONSUMO (GLS)"].sum()
-total_costos = df["COSTOS DE GENERACIÓN USD"].sum()
-valor_kw = df["VALOR POR KW GENERADO"].mean()
-
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("🔋 Total Generado (KW-H)", f"{total_generado:,.0f}")
-col2.metric("⛽ Consumo Total (GLS)", f"{total_consumo:,.0f}")
-col3.metric("💰 Costos Totales (USD)", f"${total_costos:,.2f}")
-col4.metric("⚡ Valor Promedio por KW", f"${valor_kw:,.3f}")
+col1.metric("🔋 Total Generado (KW-H)", f"{df['TOTAL GENERADO KW-H'].sum():,.0f}")
+col2.metric("⛽ Consumo Total (GLS)", f"{df['CONSUMO (GLS)'].sum():,.0f}")
+col3.metric("💰 Costos Totales (USD)", f"${df['COSTOS DE GENERACIÓN USD'].sum():,.2f}")
+col4.metric("⚡ Valor Promedio por KW", f"${df['VALOR POR KW GENERADO'].mean():,.2f}")
 
 st.markdown("---")
 
 # --------------------------------------------------
 # Agregaciones
 # --------------------------------------------------
-gen_fecha = (
-    df.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)
-      .agg({"TOTAL GENERADO KW-H": "sum"})
-)
+gen_fecha = df.groupby(
+    ["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False
+)["TOTAL GENERADO KW-H"].sum()
 
-gen_total = (
-    df.groupby("FECHA DEL REGISTRO", as_index=False)
-      .agg({"TOTAL GENERADO KW-H": "sum"})
-)
+gen_total = df.groupby(
+    "FECHA DEL REGISTRO", as_index=False
+)["TOTAL GENERADO KW-H"].sum()
 
-consumo = (
-    df.groupby("FECHA DEL REGISTRO", as_index=False)
-      .agg({"CONSUMO (GLS)": "sum"})
-)
+consumo = df.groupby(
+    "FECHA DEL REGISTRO", as_index=False
+)["CONSUMO (GLS)"].sum()
 
-# --------------------------------------------------
-# Rango inicial
-# --------------------------------------------------
 fecha_max = df["FECHA DEL REGISTRO"].max()
-fecha_min_15 = fecha_max - pd.Timedelta(days=14)
+fecha_min = fecha_max - pd.Timedelta(days=14)
 
 # --------------------------------------------------
 # Gráficos
@@ -131,31 +135,16 @@ fig_barras = px.bar(
     x="FECHA DEL REGISTRO",
     y="TOTAL GENERADO KW-H",
     color="LOCACIÓN",
-    barmode="group",
-    title="Total Generado KW-H por Locación"
+    title="Total Generado por Locación"
 )
-
-fig_barras.update_xaxes(range=[fecha_min_15, fecha_max])
+fig_barras.update_xaxes(range=[fecha_min, fecha_max])
 
 fig_total = px.line(
     gen_total,
     x="FECHA DEL REGISTRO",
     y="TOTAL GENERADO KW-H",
     markers=True,
-    title="Total Generado KW-H Diario"
-)
-
-fig_total.update_xaxes(
-    range=[fecha_min_15, fecha_max],
-    rangeselector=dict(
-        buttons=[
-            dict(count=7, label="7d", step="day", stepmode="backward"),
-            dict(count=15, label="15d", step="day", stepmode="backward"),
-            dict(count=30, label="30d", step="day", stepmode="backward"),
-            dict(step="all", label="Todo")
-        ]
-    ),
-    rangeslider=dict(visible=True)
+    title="Generación Total Diaria"
 )
 
 fig_consumo = px.line(
@@ -166,25 +155,9 @@ fig_consumo = px.line(
     title="Consumo Diario (GLS)"
 )
 
-fig_consumo.update_xaxes(
-    range=[fecha_min_15, fecha_max],
-    rangeselector=dict(
-        buttons=[
-            dict(count=7, label="7d", step="day", stepmode="backward"),
-            dict(count=15, label="15d", step="day", stepmode="backward"),
-            dict(count=30, label="30d", step="day", stepmode="backward"),
-            dict(step="all", label="Todo")
-        ]
-    ),
-    rangeslider=dict(visible=True)
-)
-
-# --------------------------------------------------
-# Render
-# --------------------------------------------------
 st.plotly_chart(fig_barras, use_container_width=True)
 st.plotly_chart(fig_total, use_container_width=True)
 st.plotly_chart(fig_consumo, use_container_width=True)
 
 st.markdown("---")
-st.caption("ADBO SMART · Inteligencia de Negocios")
+st.caption("ADBO SMART · Inteligencia de Negocios & IA")
