@@ -79,7 +79,10 @@ def gauge_carga(value, title):
             }
         )
     )
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=40, b=10))
+    fig.update_layout(
+    height=260,
+    margin=dict(t=40, b=10, l=10, r=10),
+    )
     return fig
 
 # ==================================================
@@ -239,38 +242,39 @@ st.markdown("---")
 st.markdown("## 🔌 Carga Prime (%) por Generador")
 
 for loc in df_f["LOCACIÓN"].dropna().unique():
+
+    df_loc = df_f[df_f["LOCACIÓN"] == loc]
+
+    # Ordenar generadores por carga prime (según modo)
+    if st.session_state.modo == "last":
+        gen_order = (
+            df_loc.sort_values("FECHA DEL REGISTRO")
+                  .groupby("GENERADOR")["%CARGA PRIME"]
+                  .last()
+                  .sort_values(ascending=False)
+        )
+    else:
+        gen_order = (
+            df_loc.groupby("GENERADOR")["%CARGA PRIME"]
+                  .mean()
+                  .sort_values(ascending=False)
+        )
+
+    # Eliminar ceros, negativos y NaN
+    gen_order = gen_order[gen_order > 0]
+
+    if gen_order.empty:
+        continue
+
     with st.expander(f"📍 {loc}", expanded=True):
 
-        df_loc = df_f[df_f["LOCACIÓN"] == loc]
-        gens = df_loc["GENERADOR"].dropna().unique()
+        cols = st.columns(min(4, len(gen_order)))
 
-        cols = st.columns(min(4, len(gens)))
+        for i, (gen, valor) in enumerate(gen_order.items()):
 
-        for i, gen in enumerate(gens):
-            df_gen = df_loc[df_loc["GENERADOR"] == gen]
-        
-            if df_gen.empty:
-                continue
-        
-            # Valor según modo
-            if st.session_state.modo == "last":
-                valor = (
-                    df_gen
-                    .sort_values("FECHA DEL REGISTRO")["%CARGA PRIME"]
-                    .iloc[-1]
-                )
-            else:
-                valor = df_gen["%CARGA PRIME"].mean()
-        
-            # ❌ NO mostrar si es 0, negativo o NaN
-            if pd.isna(valor) or valor <= 0:
-                continue
-        
             with cols[i % len(cols)]:
-                st.plotly_chart(
-                    gauge_carga(valor * 100, gen),
-                    use_container_width=True
-                )
+                fig = gauge_carga(valor, gen)
+                st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
