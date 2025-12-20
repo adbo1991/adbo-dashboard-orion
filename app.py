@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # ======================================================
-# CSS (contraste OK móvil)
+# CSS (contraste móvil OK)
 # ======================================================
 st.markdown("""
 <style>
@@ -56,8 +56,8 @@ def gauge_carga(valor, titulo):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=valor,
-        number={"suffix": "%", "font": {"size": 16}},
-        title={"text": titulo, "font": {"size": 12}},
+        number={"suffix": "%", "font": {"size": 18}},
+        title={"text": titulo, "font": {"size": 13}},
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
@@ -69,7 +69,7 @@ def gauge_carga(valor, titulo):
             ],
         }
     ))
-    fig.update_layout(height=190, margin=dict(l=10, r=10, t=35, b=10))
+    fig.update_layout(height=220, margin=dict(l=10, r=10, t=40, b=10))
     return fig
 
 # ======================================================
@@ -87,27 +87,52 @@ def load_data():
     gid = 540053809
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
-    df = pd.read_csv(url, engine="python", decimal=",", thousands=".", on_bad_lines="skip")
+    df = pd.read_csv(
+        url,
+        engine="python",
+        decimal=",",
+        thousands=".",
+        on_bad_lines="skip"
+    )
 
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
         (df["POTENCIA ACTIVA (KW)"].notna())
     ]
 
-    df["FECHA DEL REGISTRO"] = pd.to_datetime(df["FECHA DEL REGISTRO"], dayfirst=True)
+    df["FECHA DEL REGISTRO"] = pd.to_datetime(
+        df["FECHA DEL REGISTRO"],
+        dayfirst=True,
+        errors="coerce"
+    )
 
-    for c in [
+    # Columnas numéricas (clave para evitar errores)
+    cols_numericas = [
+        "HORAS OPERATIVAS",
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
-        "COSTOS DE GENERACIÓN USD",
-        "VALOR POR KW GENERADO",
+        "POTENCIA ACTIVA (KW)",
         "%CARGA PRIME",
-        "HORAS OPERATIVAS"
+        "VALOR POR KW GENERADO",
+        "COSTOS DE GENERACIÓN USD"
+    ]
+
+    for col in cols_numericas:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Reglas de negocio
+    for col in [
+        "HORAS OPERATIVAS",
+        "TOTAL GENERADO KW-H",
+        "CONSUMO (GLS)",
+        "COSTOS DE GENERACIÓN USD"
     ]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+        if col in df.columns:
+            df[col] = df[col].fillna(0)
 
     return df
+
 
 df = load_data()
 
@@ -132,7 +157,7 @@ fecha_max = df["FECHA DEL REGISTRO"].max()
 if "modo" not in st.session_state:
     st.session_state.modo = "7d"
 
-b1, b2, b3 = st.columns([1,1,6])
+b1, b2, _ = st.columns([1, 1, 6])
 
 if b1.button("📅 Últimos 7 días"):
     st.session_state.modo = "7d"
@@ -140,14 +165,14 @@ if b1.button("📅 Últimos 7 días"):
 if b2.button("📌 Último registro"):
     st.session_state.modo = "last"
 
-if st.session_state.modo == "last":
-    fecha_min = fecha_max
-else:
-    fecha_min = fecha_max - pd.Timedelta(days=6)
+fecha_min = fecha_max if st.session_state.modo == "last" else fecha_max - pd.Timedelta(days=6)
 
 st.info(f"Período activo: {fecha_min.date()} → {fecha_max.date()}")
 
-df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min) & (df["FECHA DEL REGISTRO"] <= fecha_max)]
+df_f = df[
+    (df["FECHA DEL REGISTRO"] >= fecha_min) &
+    (df["FECHA DEL REGISTRO"] <= fecha_max)
+]
 
 # ======================================================
 # KPIs FILTRADOS
@@ -165,7 +190,10 @@ st.markdown("---")
 # ======================================================
 # GRÁFICOS PRINCIPALES
 # ======================================================
-gen_loc = df_f.groupby(["FECHA DEL REGISTRO","LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
+gen_loc = df_f.groupby(
+    ["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False
+)["TOTAL GENERADO KW-H"].sum()
+
 fig_bar = px.bar(
     gen_loc,
     x="FECHA DEL REGISTRO",
@@ -175,47 +203,33 @@ fig_bar = px.bar(
     title="Generación por Locación"
 )
 
-gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
-fig_line = px.line(gen_day, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H",
-                   markers=True, title="Generación diaria")
+gen_day = df_f.groupby(
+    "FECHA DEL REGISTRO", as_index=False
+)["TOTAL GENERADO KW-H"].sum()
 
-con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
-fig_con = px.line(con_day, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)",
-                  markers=True, title="Consumo diario")
+fig_line = px.line(
+    gen_day,
+    x="FECHA DEL REGISTRO",
+    y="TOTAL GENERADO KW-H",
+    markers=True,
+    title="Generación diaria"
+)
+
+con_day = df_f.groupby(
+    "FECHA DEL REGISTRO", as_index=False
+)["CONSUMO (GLS)"].sum()
+
+fig_con = px.line(
+    con_day,
+    x="FECHA DEL REGISTRO",
+    y="CONSUMO (GLS)",
+    markers=True,
+    title="Consumo diario"
+)
 
 st.plotly_chart(fig_bar, use_container_width=True)
 st.plotly_chart(fig_line, use_container_width=True)
 st.plotly_chart(fig_con, use_container_width=True)
-
-# ======================================================
-# TABLA RESUMEN OPERATIVA POR GENERADOR
-# ======================================================
-st.markdown("---")
-st.markdown("## 📋 Resumen Operativo por Generador")
-
-df_resumen = (
-    df_f
-    .groupby(["LOCACIÓN", "GENERADOR"], as_index=False)
-    .agg({
-        "HORAS OPERATIVAS": "sum",
-        "TOTAL GENERADO KW-H": "sum",
-        "CONSUMO (GLS)": "sum",
-        "POTENCIA ACTIVA (KW)": "mean",
-        "%CARGA PRIME": "mean",
-        "VALOR POR KW GENERADO": "mean"
-    })
-)
-
-df_resumen["%CARGA PRIME"] = df_resumen["%CARGA PRIME"] * 100
-
-df_show = df_resumen.copy()
-df_show["TOTAL GENERADO KW-H"] = df_show["TOTAL GENERADO KW-H"].apply(lambda x: format_number(x, decimals=0))
-df_show["CONSUMO (GLS)"] = df_show["CONSUMO (GLS)"].apply(format_number)
-df_show["POTENCIA ACTIVA (KW)"] = df_show["POTENCIA ACTIVA (KW)"].apply(format_number)
-df_show["%CARGA PRIME"] = df_show["%CARGA PRIME"].apply(lambda x: f"{x:.1f}%")
-df_show["VALOR POR KW GENERADO"] = df_show["VALOR POR KW GENERADO"].apply(lambda x: format_number(x, currency=True))
-
-st.dataframe(df_show, use_container_width=True, hide_index=True)
 
 # ======================================================
 # VELOCÍMETROS (AL FINAL)
@@ -230,21 +244,24 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
         gens = df_loc["GENERADOR"].dropna().unique()
         cols = st.columns(min(4, len(gens)))
 
-        col_i = 0
+        idx = 0
         for gen in gens:
             df_gen = df_loc[df_loc["GENERADOR"] == gen]
 
             if st.session_state.modo == "last":
-                valor = df_gen.sort_values("FECHA DEL REGISTRO").iloc[-1]["%CARGA PRIME"] * 100
+                valor = df_gen.sort_values("FECHA DEL REGISTRO").iloc[-1]["%CARGA PRIME"]
             else:
-                valor = df_gen["%CARGA PRIME"].mean() * 100
+                valor = df_gen["%CARGA PRIME"].mean()
 
             if pd.isna(valor) or valor <= 0:
                 continue
 
-            with cols[col_i % len(cols)]:
-                st.plotly_chart(gauge_carga(valor, gen), use_container_width=True)
+            with cols[idx % len(cols)]:
+                st.plotly_chart(
+                    gauge_carga(valor * 100, gen),
+                    use_container_width=True
+                )
 
-            col_i += 1
+            idx += 1
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
