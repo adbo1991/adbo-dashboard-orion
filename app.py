@@ -175,7 +175,7 @@ f4.metric("⚡ Valor prom. KW", format_number(df_f["VALOR POR KW GENERADO"].mean
 st.markdown("---")
 
 # ======================================================
-# TABLA RESUMEN (FORMATO CORREGIDO)
+# TABLA RESUMEN POR LOCACIÓN Y GENERADOR
 # ======================================================
 st.markdown("### 📋 Resumen por Locación y Generador")
 
@@ -192,15 +192,26 @@ df_tabla = (
     .sort_values(["LOCACIÓN", "GENERADOR"])
 )
 
-# 👉 Formatos solicitados
-df_tabla["%CARGA PRIME"] = (df_tabla["%CARGA PRIME"] * 100).round(0)
+# ---------- FORMATOS ----------
 df_tabla["HORAS OPERATIVAS"] = df_tabla["HORAS OPERATIVAS"].round(2)
 df_tabla["TOTAL GENERADO KW-H"] = df_tabla["TOTAL GENERADO KW-H"].round(2)
 df_tabla["CONSUMO (GLS)"] = df_tabla["CONSUMO (GLS)"].round(2)
 df_tabla["VALOR POR KW GENERADO"] = df_tabla["VALOR POR KW GENERADO"].round(2)
 
+# % carga prime → porcentaje SIN decimales
+df_tabla["%CARGA PRIME"] = (df_tabla["%CARGA PRIME"] * 100).round(0).astype("Int64")
+
+# ---------- VISUAL ----------
 st.dataframe(
-    df_tabla.style.apply(style_locacion, axis=1),
+    df_tabla.style
+        .apply(style_locacion, axis=1)
+        .format({
+            "HORAS OPERATIVAS": "{:,.2f}",
+            "TOTAL GENERADO KW-H": "{:,.2f}",
+            "CONSUMO (GLS)": "{:,.2f}",
+            "VALOR POR KW GENERADO": "{:,.2f}",
+            "%CARGA PRIME": "{}%"
+        }),
     use_container_width=True
 )
 
