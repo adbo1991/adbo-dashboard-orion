@@ -265,3 +265,4 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
             idx += 1
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
+
