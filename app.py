@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # ======================================================
-# PALETA DE COLORES POR LOCACIÓN
+# COLORES POR LOCACIÓN
 # ======================================================
 COLOR_LOCACION = {
     "PEÑA BLANCA": "#38bdf8",  # celeste
@@ -89,7 +89,6 @@ def gauge_carga(valor, titulo):
     fig.update_layout(height=220, margin=dict(l=10, r=10, t=40, b=10))
     return fig
 
-
 # ======================================================
 # TÍTULO
 # ======================================================
@@ -131,7 +130,7 @@ def load_data():
 df = load_data()
 
 # ======================================================
-# KPIs HISTÓRICOS
+# KPIs HISTÓRICOS (NO DESAPARECEN)
 # ======================================================
 st.markdown("### 📊 KPIs Históricos (acumulado total)")
 k1, k2, k3, k4 = st.columns(4)
@@ -163,7 +162,20 @@ st.info(f"Período activo: {fecha_min.date()} → {fecha_max.date()}")
 df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min) & (df["FECHA DEL REGISTRO"] <= fecha_max)]
 
 # ======================================================
-# TABLA RESUMEN (ANTES DE VELOCÍMETROS)
+# KPIs FILTRADOS
+# ======================================================
+st.markdown("### 📊 KPIs del período seleccionado")
+f1, f2, f3, f4 = st.columns(4)
+
+f1.metric("🔋 Generación", format_number(df_f["TOTAL GENERADO KW-H"].sum(), decimals=0))
+f2.metric("⛽ Consumo", format_number(df_f["CONSUMO (GLS)"].sum()))
+f3.metric("💰 Costos", format_number(df_f["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
+f4.metric("⚡ Valor prom. KW", format_number(df_f["VALOR POR KW GENERADO"].mean(), currency=True))
+
+st.markdown("---")
+
+# ======================================================
+# TABLA RESUMEN (FORMATO CORREGIDO)
 # ======================================================
 st.markdown("### 📋 Resumen por Locación y Generador")
 
@@ -180,7 +192,12 @@ df_tabla = (
     .sort_values(["LOCACIÓN", "GENERADOR"])
 )
 
-df_tabla["%CARGA PRIME"] = df_tabla["%CARGA PRIME"] * 100
+# 👉 Formatos solicitados
+df_tabla["%CARGA PRIME"] = (df_tabla["%CARGA PRIME"] * 100).round(0)
+df_tabla["HORAS OPERATIVAS"] = df_tabla["HORAS OPERATIVAS"].round(2)
+df_tabla["TOTAL GENERADO KW-H"] = df_tabla["TOTAL GENERADO KW-H"].round(2)
+df_tabla["CONSUMO (GLS)"] = df_tabla["CONSUMO (GLS)"].round(2)
+df_tabla["VALOR POR KW GENERADO"] = df_tabla["VALOR POR KW GENERADO"].round(2)
 
 st.dataframe(
     df_tabla.style.apply(style_locacion, axis=1),
@@ -245,6 +262,3 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
             col_i += 1
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
-
-
-
