@@ -56,8 +56,8 @@ def gauge_carga(valor, titulo):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=valor,
-        number={"suffix": "%", "font": {"size": 18}},
-        title={"text": titulo, "font": {"size": 13}},
+        number={"suffix": "%", "font": {"size": 16}},
+        title={"text": titulo, "font": {"size": 12}},
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
@@ -69,7 +69,7 @@ def gauge_carga(valor, titulo):
             ],
         }
     ))
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=40, b=10))
+    fig.update_layout(height=190, margin=dict(l=10, r=10, t=35, b=10))
     return fig
 
 # ======================================================
@@ -101,9 +101,11 @@ def load_data():
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
-        "%CARGA PRIME"
+        "%CARGA PRIME",
+        "HORAS OPERATIVAS"
     ]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
 
@@ -164,9 +166,14 @@ st.markdown("---")
 # GRÁFICOS PRINCIPALES
 # ======================================================
 gen_loc = df_f.groupby(["FECHA DEL REGISTRO","LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
-fig_bar = px.bar(gen_loc, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H",
-                 color="LOCACIÓN", barmode="group",
-                 title="Generación por Locación")
+fig_bar = px.bar(
+    gen_loc,
+    x="FECHA DEL REGISTRO",
+    y="TOTAL GENERADO KW-H",
+    color="LOCACIÓN",
+    barmode="group",
+    title="Generación por Locación"
+)
 
 gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
 fig_line = px.line(gen_day, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H",
@@ -179,6 +186,36 @@ fig_con = px.line(con_day, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)",
 st.plotly_chart(fig_bar, use_container_width=True)
 st.plotly_chart(fig_line, use_container_width=True)
 st.plotly_chart(fig_con, use_container_width=True)
+
+# ======================================================
+# TABLA RESUMEN OPERATIVA POR GENERADOR
+# ======================================================
+st.markdown("---")
+st.markdown("## 📋 Resumen Operativo por Generador")
+
+df_resumen = (
+    df_f
+    .groupby(["LOCACIÓN", "GENERADOR"], as_index=False)
+    .agg({
+        "HORAS OPERATIVAS": "sum",
+        "TOTAL GENERADO KW-H": "sum",
+        "CONSUMO (GLS)": "sum",
+        "POTENCIA ACTIVA (KW)": "mean",
+        "%CARGA PRIME": "mean",
+        "VALOR POR KW GENERADO": "mean"
+    })
+)
+
+df_resumen["%CARGA PRIME"] = df_resumen["%CARGA PRIME"] * 100
+
+df_show = df_resumen.copy()
+df_show["TOTAL GENERADO KW-H"] = df_show["TOTAL GENERADO KW-H"].apply(lambda x: format_number(x, decimals=0))
+df_show["CONSUMO (GLS)"] = df_show["CONSUMO (GLS)"].apply(format_number)
+df_show["POTENCIA ACTIVA (KW)"] = df_show["POTENCIA ACTIVA (KW)"].apply(format_number)
+df_show["%CARGA PRIME"] = df_show["%CARGA PRIME"].apply(lambda x: f"{x:.1f}%")
+df_show["VALOR POR KW GENERADO"] = df_show["VALOR POR KW GENERADO"].apply(lambda x: format_number(x, currency=True))
+
+st.dataframe(df_show, use_container_width=True, hide_index=True)
 
 # ======================================================
 # VELOCÍMETROS (AL FINAL)
@@ -211,4 +248,3 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
             col_i += 1
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
-
