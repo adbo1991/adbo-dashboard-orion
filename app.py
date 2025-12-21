@@ -23,9 +23,9 @@ st.set_page_config(
 # COLORES POR LOCACIÓN
 # ======================================================
 COLOR_LOCACION = {
-    "PEÑA BLANCA": "#38bdf8",  # celeste
-    "OCANO": "#f59e0b",        # naranja
-    "CFE": "#6b7280"           # gris
+    "PEÑA BLANCA": "#38bdf8",
+    "OCANO": "#f59e0b",
+    "CFE": "#6b7280"
 }
 
 # ======================================================
@@ -61,6 +61,26 @@ def format_number(value, currency=False, decimals=2):
     if len(parts) > 2:
         formatted = "'".join(parts[:-1]) + "," + parts[-1]
     return f"USD {formatted}" if currency else formatted
+
+
+def parse_number(val):
+    """
+    Convierte '2.913.142,58' → 2913142.58
+    """
+    if pd.isna(val):
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+
+    val = str(val).strip()
+    if val == "":
+        return None
+
+    val = val.replace(".", "").replace(",", ".")
+    try:
+        return float(val)
+    except:
+        return None
 
 
 def style_locacion(row):
@@ -122,20 +142,19 @@ def load_data():
     if df.empty:
         return df
 
-    # FILTROS BASE
+    # LIMPIEZA
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
-        (df["POTENCIA ACTIVA (KW)"].astype(str).str.strip() != "")
+        (df["POTENCIA ACTIVA (KW)"].notna()) &
+        (df["POTENCIA ACTIVA (KW)"] != "")
     ].copy()
 
-    # FECHA
     df["FECHA DEL REGISTRO"] = pd.to_datetime(
         df["FECHA DEL REGISTRO"],
         dayfirst=True,
         errors="coerce"
     )
 
-    # LIMPIEZA NUMÉRICA ROBUSTA
     cols_numeric = [
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
@@ -147,20 +166,12 @@ def load_data():
 
     for c in cols_numeric:
         if c in df.columns:
-            df[c] = (
-                df[c]
-                .astype(str)
-                .str.replace("%", "", regex=False)
-                .str.replace(",", "", regex=False)
-                .str.strip()
-            )
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df[c] = df[c].apply(parse_number)
 
-    # NORMALIZAR %CARGA PRIME
-    if "%CARGA PRIME" in df.columns:
-        df["%CARGA PRIME"] = df["%CARGA PRIME"].apply(
-            lambda x: x * 100 if pd.notna(x) and x <= 1.5 else x
-        )
+    # Normalizar % carga prime
+    df["%CARGA PRIME"] = df["%CARGA PRIME"].apply(
+        lambda x: x * 100 if pd.notna(x) and x <= 1 else x
+    )
 
     return df
 
@@ -234,8 +245,6 @@ df_tabla = (
     .sort_values(["LOCACIÓN", "GENERADOR"])
 )
 
-df_tabla["%CARGA PRIME"] = df_tabla["%CARGA PRIME"].round(0)
-
 st.dataframe(
     df_tabla.style
         .apply(style_locacion, axis=1)
@@ -243,39 +252,11 @@ st.dataframe(
             "HORAS OPERATIVAS": "{:,.2f}",
             "TOTAL GENERADO KW-H": "{:,.2f}",
             "CONSUMO (GLS)": "{:,.2f}",
-            "VALOR POR KW GENERADO": "{:,.2f}",
+            "VALOR POR KW GENERADO": "USD {:,.2f}",
             "%CARGA PRIME": "{:.0f}%"
         }),
     use_container_width=True
 )
-
-# ======================================================
-# GRÁFICOS
-# ======================================================
-st.markdown("---")
-
-gen_loc = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
-fig_bar = px.bar(
-    gen_loc,
-    x="FECHA DEL REGISTRO",
-    y="TOTAL GENERADO KW-H",
-    color="LOCACIÓN",
-    barmode="group",
-    color_discrete_map=COLOR_LOCACION,
-    title="Generación por Locación"
-)
-
-gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
-fig_line = px.line(gen_day, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H",
-                   markers=True, title="Generación diaria")
-
-con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
-fig_con = px.line(con_day, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)",
-                  markers=True, title="Consumo diario")
-
-st.plotly_chart(fig_bar, use_container_width=True)
-st.plotly_chart(fig_line, use_container_width=True)
-st.plotly_chart(fig_con, use_container_width=True)
 
 # ======================================================
 # VELOCÍMETROS
@@ -293,12 +274,7 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
 
         for gen in gens:
             df_gen = df_loc[df_loc["GENERADOR"] == gen]
-
-            valor = (
-                df_gen.sort_values("FECHA DEL REGISTRO").iloc[-1]["%CARGA PRIME"]
-                if st.session_state.modo == "last"
-                else df_gen["%CARGA PRIME"].mean()
-            )
+            valor = df_gen["%CARGA PRIME"].mean()
 
             if pd.isna(valor) or valor <= 0:
                 continue
