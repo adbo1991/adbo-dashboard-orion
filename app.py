@@ -96,7 +96,7 @@ st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
 # ======================================================
-# CARGA DE DATOS
+# CARGA DE DATOS (GOOGLE SHEETS PRIVADO)
 # ======================================================
 import gspread
 from google.oauth2.service_account import Credentials
@@ -116,10 +116,7 @@ def load_data():
 
     gc = gspread.authorize(credentials)
 
-    # 👉 Abre el Google Sheet por ID
     sheet = gc.open_by_key("1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I")
-
-    # 👉 Hoja por GID
     worksheet = sheet.get_worksheet_by_id(540053809)
 
     data = worksheet.get_all_records()
@@ -150,7 +147,7 @@ def load_data():
 
     for c in cols_numeric:
         if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
     return df
 
