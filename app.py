@@ -56,31 +56,8 @@ div[data-testid="metric-container"] div {
 def format_number(value, currency=False, decimals=2):
     if pd.isna(value):
         return "—"
-    formatted = f"{value:,.{decimals}f}"
-    parts = formatted.split(",")
-    if len(parts) > 2:
-        formatted = "'".join(parts[:-1]) + "," + parts[-1]
+    formatted = f"{value:,.{decimals}f}".replace(",", "'")
     return f"USD {formatted}" if currency else formatted
-
-
-def parse_number(val):
-    """
-    Convierte '2.913.142,58' → 2913142.58
-    """
-    if pd.isna(val):
-        return None
-    if isinstance(val, (int, float)):
-        return float(val)
-
-    val = str(val).strip()
-    if val == "":
-        return None
-
-    val = val.replace(".", "").replace(",", ".")
-    try:
-        return float(val)
-    except:
-        return None
 
 
 def style_locacion(row):
@@ -95,8 +72,8 @@ def gauge_carga(valor, titulo):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=valor,
-        number={"suffix": "%", "font": {"size": 18}},
-        title={"text": titulo, "font": {"size": 13}},
+        number={"suffix": "%"},
+        title={"text": titulo},
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
@@ -134,6 +111,7 @@ def load_data():
     )
 
     gc = gspread.authorize(credentials)
+
     sheet = gc.open_by_key("1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I")
     worksheet = sheet.get_worksheet_by_id(540053809)
 
@@ -142,11 +120,10 @@ def load_data():
     if df.empty:
         return df
 
-    # LIMPIEZA
+    # ---------------- LIMPIEZA ----------------
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
-        (df["POTENCIA ACTIVA (KW)"].notna()) &
-        (df["POTENCIA ACTIVA (KW)"] != "")
+        (df["POTENCIA ACTIVA (KW)"].notna())
     ].copy()
 
     df["FECHA DEL REGISTRO"] = pd.to_datetime(
@@ -156,30 +133,25 @@ def load_data():
     )
 
     cols_numeric = [
+        "HORAS OPERATIVAS",
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
-        "%CARGA PRIME",
-        "HORAS OPERATIVAS"
+        "%CARGA PRIME"
     ]
 
     for c in cols_numeric:
         if c in df.columns:
-            df[c] = df[c].apply(parse_number)
-
-    # Normalizar % carga prime
-    df["%CARGA PRIME"] = df["%CARGA PRIME"].apply(
-        lambda x: x * 100 if pd.notna(x) and x <= 1 else x
-    )
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
 
 
 df = load_data()
 
-if df is None or df.empty:
-    st.error("No se pudo cargar información desde Google Sheets")
+if df.empty:
+    st.error("No hay datos válidos")
     st.stop()
 
 # ======================================================
@@ -242,8 +214,9 @@ df_tabla = (
         "VALOR POR KW GENERADO": "mean"
     })
     .reset_index()
-    .sort_values(["LOCACIÓN", "GENERADOR"])
 )
+
+df_tabla["%CARGA PRIME"] = (df_tabla["%CARGA PRIME"] * 100).round(0).astype("Int64")
 
 st.dataframe(
     df_tabla.style
@@ -252,8 +225,8 @@ st.dataframe(
             "HORAS OPERATIVAS": "{:,.2f}",
             "TOTAL GENERADO KW-H": "{:,.2f}",
             "CONSUMO (GLS)": "{:,.2f}",
-            "VALOR POR KW GENERADO": "USD {:,.2f}",
-            "%CARGA PRIME": "{:.0f}%"
+            "VALOR POR KW GENERADO": "{:,.2f}",
+            "%CARGA PRIME": "{}%"
         }),
     use_container_width=True
 )
@@ -270,17 +243,20 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
     with st.expander(f"📍 {loc}", expanded=True):
         gens = df_loc["GENERADOR"].dropna().unique()
         cols = st.columns(min(4, len(gens)))
-        col_i = 0
 
-        for gen in gens:
+        for i, gen in enumerate(gens):
             df_gen = df_loc[df_loc["GENERADOR"] == gen]
-            valor = df_gen["%CARGA PRIME"].mean()
+
+            valor = (
+                df_gen.sort_values("FECHA DEL REGISTRO").iloc[-1]["%CARGA PRIME"] * 100
+                if st.session_state.modo == "last"
+                else df_gen["%CARGA PRIME"].mean() * 100
+            )
 
             if pd.isna(valor) or valor <= 0:
                 continue
 
-            with cols[col_i % len(cols)]:
+            with cols[i % len(cols)]:
                 st.plotly_chart(gauge_carga(valor, gen), use_container_width=True)
-            col_i += 1
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
