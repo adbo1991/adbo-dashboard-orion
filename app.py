@@ -225,6 +225,18 @@ fig_bar.update_traces(
     textfont=dict(size=16)
 )
 
+fig_bar.update_traces(
+    cliponaxis=False
+)
+
+fig_bar.update_yaxes(
+    rangemode="tozero"
+)
+
+fig_bar.update_layout(
+    margin=dict(t=80)
+)
+
 gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
 fig_gen = px.line(
     gen_day,
@@ -240,6 +252,17 @@ fig_gen.update_traces(
     textfont=dict(size=16)
 )
 
+fig_bar.update_traces(
+    cliponaxis=False
+)
+
+fig_bar.update_yaxes(
+    rangemode="tozero"
+)
+
+fig_bar.update_layout(
+    margin=dict(t=80)
+)
 con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
 fig_con = px.line(
     con_day,
@@ -254,6 +277,19 @@ fig_gen.update_traces(
     textposition="top center",
     textfont=dict(size=16)
 )
+
+fig_con.update_traces(
+    cliponaxis=False
+)
+
+fig_con.update_yaxes(
+    rangemode="tozero"
+)
+
+fig_con.update_layout(
+    margin=dict(t=80)
+)
+
 
 st.plotly_chart(fig_bar, use_container_width=True)
 st.plotly_chart(fig_gen, use_container_width=True)
