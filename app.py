@@ -95,6 +95,7 @@ def gauge_carga(valor, titulo):
 st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
+
 # ======================================================
 # CARGA DE DATOS (GOOGLE SHEETS PRIVADO)
 # ======================================================
@@ -115,16 +116,16 @@ def load_data():
     )
 
     gc = gspread.authorize(credentials)
-
     sheet = gc.open_by_key("1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I")
     worksheet = sheet.get_worksheet_by_id(540053809)
 
     data = worksheet.get_all_records()
     df = pd.DataFrame(data)
 
-    # ===============================
+    if df.empty:
+        return df
+
     # LIMPIEZA
-    # ===============================
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
         (df["POTENCIA ACTIVA (KW)"].notna()) &
@@ -151,22 +152,17 @@ def load_data():
 
     return df
 
-df = load_data
 
 # ===============================
-# SEGURIDAD NUMÉRICA (CRÍTICO)
+# USO
 # ===============================
-numeric_cols = [
-    "TOTAL GENERADO KW-H",
-    "CONSUMO (GLS)",
-    "COSTOS DE GENERACIÓN USD",
-    "VALOR POR KW GENERADO",
-    "%CARGA PRIME"
-]
+df = load_data()
 
-for c in numeric_cols:
-    if c in df.columns:
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+if df is None or df.empty:
+    st.error("No se pudo cargar información desde Google Sheets")
+    st.stop()
+
+
 # ======================================================
 # KPIs HISTÓRICOS (NO DESAPARECEN)
 # ======================================================
