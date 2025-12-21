@@ -155,6 +155,21 @@ def load_data():
     return df
 
 df = load_data
+
+# ===============================
+# SEGURIDAD NUMÉRICA (CRÍTICO)
+# ===============================
+numeric_cols = [
+    "TOTAL GENERADO KW-H",
+    "CONSUMO (GLS)",
+    "COSTOS DE GENERACIÓN USD",
+    "VALOR POR KW GENERADO",
+    "%CARGA PRIME"
+]
+
+for c in numeric_cols:
+    if c in df.columns:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 # ======================================================
 # KPIs HISTÓRICOS (NO DESAPARECEN)
 # ======================================================
