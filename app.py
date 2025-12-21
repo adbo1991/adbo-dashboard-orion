@@ -219,7 +219,11 @@ fig_bar = px.bar(
     text=gen_loc["TOTAL GENERADO KW-H"].round(0),
     title="🔋 Generación diaria por Locación"
 )
-fig_bar.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+fig_bar.update_traces(
+    texttemplate="%{text:,.0f}",
+    textposition="outside",
+    textfont=dict(size=16)
+)
 
 gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
 fig_gen = px.line(
@@ -230,7 +234,11 @@ fig_gen = px.line(
     text=gen_day["TOTAL GENERADO KW-H"].round(0),
     title="⚡ Generación total diaria"
 )
-fig_gen.update_traces(texttemplate="%{text:,.0f}", textposition="top center")
+fig_gen.update_traces(
+    texttemplate="%{text:,.0f}",
+    textposition="top center",
+    textfont=dict(size=16)
+)
 
 con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
 fig_con = px.line(
@@ -241,7 +249,11 @@ fig_con = px.line(
     text=con_day["CONSUMO (GLS)"].round(0),
     title="⛽ Consumo diario"
 )
-fig_con.update_traces(texttemplate="%{text:,.0f}", textposition="top center")
+fig_gen.update_traces(
+    texttemplate="%{text:,.0f}",
+    textposition="top center",
+    textfont=dict(size=16)
+)
 
 st.plotly_chart(fig_bar, use_container_width=True)
 st.plotly_chart(fig_gen, use_container_width=True)
