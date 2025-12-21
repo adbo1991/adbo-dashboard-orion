@@ -54,12 +54,14 @@ div[data-testid="metric-container"] div {
 # HELPERS
 # ======================================================
 def parse_euro_number(series):
-    return (
+    return pd.to_numeric(
         series.astype(str)
-        .str.replace(".", "", regex=False)   # miles
-        .str.replace(",", ".", regex=False)  # decimal
-        .replace("nan", None)
-        .astype(float)
+              .str.replace("\u00a0", "", regex=False)  # espacios raros
+              .str.replace(".", "", regex=False)       # miles
+              .str.replace(",", ".", regex=False)      # decimales
+              .str.replace("%", "", regex=False)
+              .str.strip(),
+        errors="coerce"
     )
 
 def format_number(value, currency=False, decimals=2):
