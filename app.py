@@ -98,37 +98,63 @@ st.caption("Datos actualizados automáticamente desde Google Sheets")
 # ======================================================
 # CARGA DE DATOS
 # ======================================================
+import gspread
+from google.oauth2.service_account import Credentials
+
 @st.cache_data(ttl=900)
 def load_data():
-    sheet_id = "1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I"
-    gid = 540053809
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
-    df = pd.read_csv(url, engine="python", decimal=",", thousands=".", on_bad_lines="skip")
-
-    df = df[
-        (df["REGISTRO CORRECTO"] == 1) &
-        (df["POTENCIA ACTIVA (KW)"].notna())
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+        "https://www.googleapis.com/auth/drive.readonly"
     ]
 
-    df["FECHA DEL REGISTRO"] = pd.to_datetime(df["FECHA DEL REGISTRO"], dayfirst=True)
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
 
-    for c in [
+    gc = gspread.authorize(credentials)
+
+    # 👉 Abre el Google Sheet por ID
+    sheet = gc.open_by_key("1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I")
+
+    # 👉 Hoja por GID
+    worksheet = sheet.get_worksheet_by_id(540053809)
+
+    data = worksheet.get_all_records()
+    df = pd.DataFrame(data)
+
+    # ===============================
+    # LIMPIEZA
+    # ===============================
+    df = df[
+        (df["REGISTRO CORRECTO"] == 1) &
+        (df["POTENCIA ACTIVA (KW)"].notna()) &
+        (df["POTENCIA ACTIVA (KW)"] != "")
+    ].copy()
+
+    df["FECHA DEL REGISTRO"] = pd.to_datetime(
+        df["FECHA DEL REGISTRO"],
+        dayfirst=True,
+        errors="coerce"
+    )
+
+    cols_numeric = [
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
-        "%CARGA PRIME",
-        "HORAS OPERATIVAS"
-    ]:
+        "%CARGA PRIME"
+    ]
+
+    for c in cols_numeric:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
 
-
-df = load_data()
-
+df = load_data
 # ======================================================
 # KPIs HISTÓRICOS (NO DESAPARECEN)
 # ======================================================
