@@ -6,8 +6,8 @@ Autor: Alexander Becerra
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
+import plotly.express as px
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -26,44 +26,43 @@ COLOR_LOCACION = {
 }
 
 # ======================================================
-# FORMATO NUMÉRICO (IGUAL AL CSV ORIGINAL)
+# HELPERS
 # ======================================================
 def euro_to_float(series):
     return (
-        series.astype(str)
+        series
+        .astype(str)
+        .str.replace("%", "", regex=False)
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
-        .replace("", pd.NA)
+        .str.strip()
+        .replace({"": None, "nan": None, "None": None})
         .astype(float)
     )
 
-def fmt(value, currency=False, decimals=2):
-    if pd.isna(value):
+def fmt(v, currency=False, dec=2):
+    if pd.isna(v):
         return "—"
-    txt = f"{value:,.{decimals}f}".replace(",", "'")
+    txt = f"{v:,.{dec}f}".replace(",", "'")
     return f"USD {txt}" if currency else txt
 
 # ======================================================
-# DATA
+# LOAD DATA
 # ======================================================
 @st.cache_data(ttl=900)
 def load_data():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets.readonly"
-    ]
-
-    credentials = Credentials.from_service_account_info(
+    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=scopes
     )
 
-    gc = gspread.authorize(credentials)
+    gc = gspread.authorize(creds)
     sheet = gc.open_by_key("1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I")
     ws = sheet.get_worksheet_by_id(540053809)
 
     df = pd.DataFrame(ws.get_all_records())
 
-    # FILTROS BASE (IGUAL QUE ANTES)
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
         (df["POTENCIA ACTIVA (KW)"] != "")
@@ -75,16 +74,14 @@ def load_data():
         errors="coerce"
     )
 
-    num_cols = [
+    for c in [
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
-        "%CARGA PRIME",
-        "HORAS OPERATIVAS"
-    ]
-
-    for c in num_cols:
+        "HORAS OPERATIVAS",
+        "%CARGA PRIME"
+    ]:
         if c in df.columns:
             df[c] = euro_to_float(df[c])
 
@@ -96,12 +93,12 @@ df = load_data()
 # KPIs HISTÓRICOS
 # ======================================================
 st.markdown("### 📊 KPIs Históricos (acumulado total)")
-k1, k2, k3, k4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-k1.metric("🔋 Total Generado", fmt(df["TOTAL GENERADO KW-H"].sum(), decimals=0))
-k2.metric("⛽ Consumo Total", fmt(df["CONSUMO (GLS)"].sum()))
-k3.metric("💰 Costos Totales", fmt(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
-k4.metric("⚡ Valor prom. KW", fmt(df["VALOR POR KW GENERADO"].mean(), currency=True))
+c1.metric("🔋 Total Generado", fmt(df["TOTAL GENERADO KW-H"].sum(), dec=0))
+c2.metric("⛽ Consumo Total", fmt(df["CONSUMO (GLS)"].sum()))
+c3.metric("💰 Costos Totales", fmt(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
+c4.metric("⚡ Valor prom. KW", fmt(df["VALOR POR KW GENERADO"].mean(), currency=True))
 
 st.markdown("---")
 
@@ -109,25 +106,12 @@ st.markdown("---")
 # FILTRO FECHA
 # ======================================================
 fecha_max = df["FECHA DEL REGISTRO"].max()
-modo = st.radio("Modo", ["7d", "last"], horizontal=True)
+modo = st.radio("Modo", ["Últimos 7 días", "Último registro"], horizontal=True)
 
-fecha_min = fecha_max if modo == "last" else fecha_max - pd.Timedelta(days=6)
-df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min)]
+fecha_min = fecha_max if modo == "Último registro" else fecha_max - pd.Timedelta(days=6)
+df_f = df[df["FECHA DEL REGISTRO"] >= fecha_min]
 
 st.info(f"Período activo: {fecha_min.date()} → {fecha_max.date()}")
-
-# ======================================================
-# KPIs FILTRADOS
-# ======================================================
-st.markdown("### 📊 KPIs del período seleccionado")
-f1, f2, f3, f4 = st.columns(4)
-
-f1.metric("🔋 Generación", fmt(df_f["TOTAL GENERADO KW-H"].sum(), decimals=0))
-f2.metric("⛽ Consumo", fmt(df_f["CONSUMO (GLS)"].sum()))
-f3.metric("💰 Costos", fmt(df_f["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
-f4.metric("⚡ Valor prom. KW", fmt(df_f["VALOR POR KW GENERADO"].mean(), currency=True))
-
-st.markdown("---")
 
 # ======================================================
 # TABLA
@@ -146,15 +130,13 @@ tabla = (
     .reset_index()
 )
 
-tabla["%CARGA PRIME"] = tabla["%CARGA PRIME"].round(0)
-
 st.dataframe(
     tabla.style.format({
         "HORAS OPERATIVAS": "{:,.2f}",
         "TOTAL GENERADO KW-H": "{:,.2f}",
         "CONSUMO (GLS)": "{:,.2f}",
-        "VALOR POR KW GENERADO": "{:,.2f}",
-        "%CARGA PRIME": "{:.0f}%"
+        "%CARGA PRIME": "{:.0f}%",
+        "VALOR POR KW GENERADO": "{:,.2f}"
     }),
     use_container_width=True
 )
@@ -166,8 +148,8 @@ st.markdown("## 🔌 Carga Prime (%) por Generador")
 
 for loc in df_f["LOCACIÓN"].dropna().unique():
     with st.expander(f"📍 {loc}", expanded=True):
-        for gen, gdf in df_f[df_f["LOCACIÓN"] == loc].groupby("GENERADOR"):
-            val = gdf["%CARGA PRIME"].iloc[-1 if modo == "last" else slice(None)].mean()
+        for gen, g in df_f[df_f["LOCACIÓN"] == loc].groupby("GENERADOR"):
+            val = g["%CARGA PRIME"].iloc[-1]
             if pd.isna(val) or val <= 0:
                 continue
 
