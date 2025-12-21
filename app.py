@@ -6,8 +6,8 @@ Autor: Alexander Becerra
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -29,22 +29,32 @@ COLOR_LOCACION = {
 # HELPERS
 # ======================================================
 def euro_to_float(series):
-    return (
+    return pd.to_numeric(
         series
         .astype(str)
         .str.replace("%", "", regex=False)
         .str.replace(".", "", regex=False)
         .str.replace(",", ".", regex=False)
-        .str.strip()
-        .replace({"": None, "nan": None, "None": None})
-        .astype(float)
+        .str.strip(),
+        errors="coerce"
     )
 
-def fmt(v, currency=False, dec=2):
+def format_number(v, currency=False, dec=2):
     if pd.isna(v):
         return "—"
     txt = f"{v:,.{dec}f}".replace(",", "'")
     return f"USD {txt}" if currency else txt
+
+def gauge_carga(valor, titulo):
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=valor,
+        number={"suffix": "%"},
+        title={"text": titulo},
+        gauge={"axis": {"range": [0, 100]}}
+    ))
+    fig.update_layout(height=220)
+    return fig
 
 # ======================================================
 # LOAD DATA
@@ -93,12 +103,12 @@ df = load_data()
 # KPIs HISTÓRICOS
 # ======================================================
 st.markdown("### 📊 KPIs Históricos (acumulado total)")
-c1, c2, c3, c4 = st.columns(4)
+k1, k2, k3, k4 = st.columns(4)
 
-c1.metric("🔋 Total Generado", fmt(df["TOTAL GENERADO KW-H"].sum(), dec=0))
-c2.metric("⛽ Consumo Total", fmt(df["CONSUMO (GLS)"].sum()))
-c3.metric("💰 Costos Totales", fmt(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
-c4.metric("⚡ Valor prom. KW", fmt(df["VALOR POR KW GENERADO"].mean(), currency=True))
+k1.metric("🔋 Total Generado", format_number(df["TOTAL GENERADO KW-H"].sum(), dec=0))
+k2.metric("⛽ Consumo Total", format_number(df["CONSUMO (GLS)"].sum()))
+k3.metric("💰 Costos Totales", format_number(df["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
+k4.metric("⚡ Valor prom. KW", format_number(df["VALOR POR KW GENERADO"].mean(), currency=True))
 
 st.markdown("---")
 
@@ -152,15 +162,6 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
             val = g["%CARGA PRIME"].iloc[-1]
             if pd.isna(val) or val <= 0:
                 continue
-
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=val,
-                number={"suffix": "%"},
-                gauge={"axis": {"range": [0, 100]}}
-            ))
-            fig.update_layout(height=220)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(gauge_carga(val, gen), use_container_width=True)
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
-
