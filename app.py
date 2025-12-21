@@ -58,15 +58,18 @@ def format_number(value, currency=False, decimals=2):
     if pd.isna(value):
         return "—"
     formatted = f"{value:,.{decimals}f}"
-    formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+    parts = formatted.split(",")
+    if len(parts) > 2:
+        formatted = "'".join(parts[:-1]) + "," + parts[-1]
     return f"USD {formatted}" if currency else formatted
 
 
 def style_locacion(row):
     color = COLOR_LOCACION.get(row["LOCACIÓN"], "#ffffff")
     styles = [""] * len(row)
-    idx = row.index.get_loc("LOCACIÓN")
-    styles[idx] = f"background-color:{color};color:white;font-weight:600;"
+    styles[row.index.get_loc("LOCACIÓN")] = (
+        f"background-color:{color};color:white;font-weight:600;"
+    )
     return styles
 
 
@@ -74,8 +77,8 @@ def gauge_carga(valor, titulo):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=valor,
-        number={"suffix": "%"},
-        title={"text": titulo},
+        number={"suffix": "%", "font": {"size": 18}},
+        title={"text": titulo, "font": {"size": 13}},
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
@@ -139,20 +142,20 @@ def load_data():
     ]
 
     df["FECHA DEL REGISTRO"] = pd.to_datetime(
-        df["FECHA DEL REGISTRO"], dayfirst=True
+        df["FECHA DEL REGISTRO"],
+        dayfirst=True
     )
 
-    cols = [
+    for c in [
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
         "%CARGA PRIME",
         "HORAS OPERATIVAS"
-    ]
-
-    for c in cols:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+    ]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
 
@@ -180,10 +183,10 @@ fecha_max = df["FECHA DEL REGISTRO"].max()
 if "modo" not in st.session_state:
     st.session_state.modo = "7d"
 
-b1, b2 = st.columns(2)
-if b1.button("📅 Últimos 7 días"):
+c1, c2 = st.columns(2)
+if c1.button("📅 Últimos 7 días"):
     st.session_state.modo = "7d"
-if b2.button("📌 Último registro"):
+if c2.button("📌 Último registro"):
     st.session_state.modo = "last"
 
 fecha_min = fecha_max if st.session_state.modo == "last" else fecha_max - pd.Timedelta(days=6)
@@ -192,140 +195,81 @@ st.info(f"Período activo: {fecha_min.date()} → {fecha_max.date()}")
 df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min) & (df["FECHA DEL REGISTRO"] <= fecha_max)]
 
 # ======================================================
-# KPIs FILTRADOS
-# ======================================================
-st.markdown("### 📊 KPIs del período seleccionado")
-f1, f2, f3, f4 = st.columns(4)
-
-f1.metric("🔋 Generación", format_number(df_f["TOTAL GENERADO KW-H"].sum(), decimals=0))
-f2.metric("⛽ Consumo", format_number(df_f["CONSUMO (GLS)"].sum()))
-f3.metric("💰 Costos", format_number(df_f["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
-f4.metric("⚡ Valor prom. KW", format_number(df_f["VALOR POR KW GENERADO"].mean(), currency=True))
-
-st.markdown("---")
-
-# ======================================================
 # GRÁFICOS
 # ======================================================
-gen_loc = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
+st.markdown("---")
 
-fig_bar = px.bar(
-    gen_loc,
-    x="FECHA DEL REGISTRO",
-    y="TOTAL GENERADO KW-H",
-    color="LOCACIÓN",
-    color_discrete_map=COLOR_LOCACION,
-    barmode="group",
-    text=gen_loc["TOTAL GENERADO KW-H"].round(0),
-    title="🔋 Generación diaria por Locación"
-)
-fig_bar.update_traces(
-    texttemplate="%{text:,.0f}",
-    textposition="outside",
-    textfont=dict(size=16)
-)
-
-fig_bar.update_traces(
-    cliponaxis=False
-)
-
-fig_bar.update_yaxes(
-    rangemode="tozero"
-)
-
-fig_bar.update_layout(
-    margin=dict(t=80)
-)
-
+# 🔹 Generación diaria
 gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
 fig_gen = px.line(
     gen_day,
     x="FECHA DEL REGISTRO",
     y="TOTAL GENERADO KW-H",
     markers=True,
-    text=gen_day["TOTAL GENERADO KW-H"].round(0),
     title="⚡ Generación total diaria"
 )
-fig_gen.update_traces(
-    texttemplate="%{text:,.0f}",
-    textposition="top center",
-    textfont=dict(size=16)
-)
 
-fig_bar.update_traces(
+fig_gen.update_traces(
+    text=gen_day["TOTAL GENERADO KW-H"].round(0),
+    textposition="top center",
+    textfont=dict(size=14),
     cliponaxis=False
 )
 
-fig_bar.update_yaxes(
-    rangemode="tozero"
+fig_gen.update_layout(
+    margin=dict(t=90),
+    title_font=dict(size=16),
+    hovermode="x unified"
 )
 
-fig_bar.update_layout(
-    margin=dict(t=80)
-)
+st.plotly_chart(fig_gen, use_container_width=True)
+
+# 🔹 Consumo diario
 con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
 fig_con = px.line(
     con_day,
     x="FECHA DEL REGISTRO",
     y="CONSUMO (GLS)",
     markers=True,
-    text=con_day["CONSUMO (GLS)"].round(0),
     title="⛽ Consumo diario"
-)
-fig_gen.update_traces(
-    texttemplate="%{text:,.0f}",
-    textposition="top center",
-    textfont=dict(size=16)
 )
 
 fig_con.update_traces(
+    text=con_day["CONSUMO (GLS)"].round(0),
+    textposition="top center",
+    textfont=dict(size=14),
     cliponaxis=False
 )
 
-fig_con.update_yaxes(
-    rangemode="tozero"
-)
-
 fig_con.update_layout(
-    margin=dict(t=80)
+    margin=dict(t=90),
+    title_font=dict(size=16),
+    hovermode="x unified"
 )
 
-
-st.plotly_chart(fig_bar, use_container_width=True)
-st.plotly_chart(fig_gen, use_container_width=True)
 st.plotly_chart(fig_con, use_container_width=True)
 
-# ======================================================
-# TABLA
-# ======================================================
-st.markdown("### 📋 Resumen por Locación y Generador")
-
-df_tabla = (
-    df_f.groupby(["LOCACIÓN", "GENERADOR"], dropna=True)
-    .agg({
-        "HORAS OPERATIVAS": "sum",
-        "TOTAL GENERADO KW-H": "sum",
-        "CONSUMO (GLS)": "sum",
-        "%CARGA PRIME": "mean",
-        "VALOR POR KW GENERADO": "mean"
-    })
-    .reset_index()
+# 🔹 Generación por locación
+gen_loc = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
+fig_bar = px.bar(
+    gen_loc,
+    x="FECHA DEL REGISTRO",
+    y="TOTAL GENERADO KW-H",
+    color="LOCACIÓN",
+    barmode="group",
+    color_discrete_map=COLOR_LOCACION,
+    title="📊 Generación por locación"
 )
 
-df_tabla["%CARGA PRIME"] = (df_tabla["%CARGA PRIME"] * 100).round(0).astype("Int64")
-
-st.dataframe(
-    df_tabla.style
-        .apply(style_locacion, axis=1)
-        .format({
-            "HORAS OPERATIVAS": "{:,.2f}",
-            "TOTAL GENERADO KW-H": "{:,.2f}",
-            "CONSUMO (GLS)": "{:,.2f}",
-            "VALOR POR KW GENERADO": "{:,.2f}",
-            "%CARGA PRIME": "{}%"
-        }),
-    use_container_width=True
+fig_bar.update_traces(
+    texttemplate="%{y:,.0f}",
+    textposition="outside",
+    textfont=dict(size=13),
+    cliponaxis=False
 )
+
+fig_bar.update_layout(margin=dict(t=90))
+st.plotly_chart(fig_bar, use_container_width=True)
 
 # ======================================================
 # VELOCÍMETROS
@@ -353,3 +297,4 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
                     st.plotly_chart(gauge_carga(valor, gen), use_container_width=True)
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
+
