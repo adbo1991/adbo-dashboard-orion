@@ -56,9 +56,8 @@ div[data-testid="metric-container"] div {
 def format_number(value, currency=False, decimals=2):
     if pd.isna(value):
         return "—"
-    formatted = f"{value:,.{decimals}f}"
-    formatted = formatted.replace(",", "'")
-    return f"USD {formatted}" if currency else formatted
+    txt = f"{value:,.{decimals}f}".replace(",", "'")
+    return f"USD {txt}" if currency else txt
 
 
 def style_locacion(row):
@@ -90,6 +89,12 @@ def gauge_carga(valor, titulo):
     return fig
 
 # ======================================================
+# TÍTULO
+# ======================================================
+st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
+st.caption("Datos actualizados automáticamente desde Google Sheets")
+
+# ======================================================
 # CARGA DE DATOS (GOOGLE SHEETS PRIVADO)
 # ======================================================
 @st.cache_data(ttl=900)
@@ -114,20 +119,21 @@ def load_data():
     if df.empty:
         return df
 
-    # ---------------- LIMPIEZA BASE ----------------
+    # ---------------- FILTRO BASE ----------------
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
-        (df["POTENCIA ACTIVA (KW)"] != "") &
-        (df["POTENCIA ACTIVA (KW)"].notna())
+        (df["POTENCIA ACTIVA (KW)"].notna()) &
+        (df["POTENCIA ACTIVA (KW)"] != "")
     ].copy()
 
+    # ---------------- FECHA ----------------
     df["FECHA DEL REGISTRO"] = pd.to_datetime(
         df["FECHA DEL REGISTRO"],
         dayfirst=True,
         errors="coerce"
     )
 
-    # ---------------- NORMALIZACIÓN NUMÉRICA ----------------
+    # ---------------- NUMÉRICOS (SIN REEMPLAZOS) ----------------
     cols_numeric = [
         "HORAS OPERATIVAS",
         "TOTAL GENERADO KW-H",
@@ -139,26 +145,15 @@ def load_data():
 
     for c in cols_numeric:
         if c in df.columns:
-            df[c] = (
-                df[c]
-                .astype(str)
-                .str.replace(".", "", regex=False)
-                .str.replace(",", ".", regex=False)
-            )
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
 
 
-# ======================================================
-# APP
-# ======================================================
-st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
-st.caption("Datos actualizados automáticamente desde Google Sheets")
-
 df = load_data()
-if df.empty:
-    st.error("No hay datos válidos")
+
+if df is None or df.empty:
+    st.error("No se pudo cargar información desde Google Sheets")
     st.stop()
 
 # ======================================================
@@ -194,7 +189,7 @@ st.info(f"Período activo: {fecha_min.date()} → {fecha_max.date()}")
 df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min) & (df["FECHA DEL REGISTRO"] <= fecha_max)]
 
 # ======================================================
-# KPIs DEL PERÍODO
+# KPIs FILTRADOS
 # ======================================================
 st.markdown("### 📊 KPIs del período seleccionado")
 f1, f2, f3, f4 = st.columns(4)
@@ -212,7 +207,7 @@ st.markdown("---")
 st.markdown("### 📋 Resumen por Locación y Generador")
 
 df_tabla = (
-    df_f.groupby(["LOCACIÓN", "GENERADOR"])
+    df_f.groupby(["LOCACIÓN", "GENERADOR"], dropna=True)
     .agg({
         "HORAS OPERATIVAS": "sum",
         "TOTAL GENERADO KW-H": "sum",
@@ -221,6 +216,7 @@ df_tabla = (
         "VALOR POR KW GENERADO": "mean"
     })
     .reset_index()
+    .sort_values(["LOCACIÓN", "GENERADOR"])
 )
 
 df_tabla["%CARGA PRIME"] = (df_tabla["%CARGA PRIME"] * 100).round(0)
@@ -232,8 +228,8 @@ st.dataframe(
             "HORAS OPERATIVAS": "{:,.2f}",
             "TOTAL GENERADO KW-H": "{:,.2f}",
             "CONSUMO (GLS)": "{:,.2f}",
-            "%CARGA PRIME": "{:.0f}%",
-            "VALOR POR KW GENERADO": "USD {:,.2f}"
+            "VALOR POR KW GENERADO": "{:,.2f}",
+            "%CARGA PRIME": "{}%"
         }),
     use_container_width=True
 )
@@ -243,21 +239,33 @@ st.dataframe(
 # ======================================================
 st.markdown("---")
 
-gen_loc = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
+gen_loc = df_f.groupby(["FECHA DEL REGISTRO","LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
 fig_bar = px.bar(
     gen_loc,
     x="FECHA DEL REGISTRO",
     y="TOTAL GENERADO KW-H",
     color="LOCACIÓN",
+    barmode="group",
     color_discrete_map=COLOR_LOCACION,
     title="Generación por Locación"
 )
 
+gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
+fig_line = px.line(gen_day, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H",
+                   markers=True, title="Generación diaria")
+
+con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
+fig_con = px.line(con_day, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)",
+                  markers=True, title="Consumo diario")
+
 st.plotly_chart(fig_bar, use_container_width=True)
+st.plotly_chart(fig_line, use_container_width=True)
+st.plotly_chart(fig_con, use_container_width=True)
 
 # ======================================================
 # VELOCÍMETROS
 # ======================================================
+st.markdown("---")
 st.markdown("## 🔌 Carga Prime (%) por Generador")
 
 for loc in df_f["LOCACIÓN"].dropna().unique():
@@ -266,10 +274,11 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
     with st.expander(f"📍 {loc}", expanded=True):
         gens = df_loc["GENERADOR"].dropna().unique()
         cols = st.columns(min(4, len(gens)))
-        i = 0
+        col_i = 0
 
         for gen in gens:
             df_gen = df_loc[df_loc["GENERADOR"] == gen]
+
             valor = (
                 df_gen.sort_values("FECHA DEL REGISTRO").iloc[-1]["%CARGA PRIME"] * 100
                 if st.session_state.modo == "last"
@@ -279,9 +288,8 @@ for loc in df_f["LOCACIÓN"].dropna().unique():
             if pd.isna(valor) or valor <= 0:
                 continue
 
-            with cols[i % len(cols)]:
+            with cols[col_i % len(cols)]:
                 st.plotly_chart(gauge_carga(valor, gen), use_container_width=True)
-            i += 1
+            col_i += 1
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
-
