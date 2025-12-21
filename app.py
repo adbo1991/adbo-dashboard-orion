@@ -56,8 +56,11 @@ div[data-testid="metric-container"] div {
 def format_number(value, currency=False, decimals=2):
     if pd.isna(value):
         return "—"
-    txt = f"{value:,.{decimals}f}"
-    return f"USD {txt}" if currency else txt
+    formatted = f"{value:,.{decimals}f}"
+    parts = formatted.split(",")
+    if len(parts) > 2:
+        formatted = "'".join(parts[:-1]) + "," + parts[-1]
+    return f"USD {formatted}" if currency else formatted
 
 
 def style_locacion(row):
@@ -89,6 +92,12 @@ def gauge_carga(valor, titulo):
     return fig
 
 # ======================================================
+# TÍTULO
+# ======================================================
+st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
+st.caption("Datos actualizados automáticamente desde Google Sheets")
+
+# ======================================================
 # CARGA DE DATOS (GOOGLE SHEETS PRIVADO)
 # ======================================================
 @st.cache_data(ttl=900)
@@ -108,39 +117,53 @@ def load_data():
     sheet = gc.open_by_key("1p9aVrwHFNIfW_08yj3RkqF4u8qdGxIrRFc63ZXjH55I")
     worksheet = sheet.get_worksheet_by_id(540053809)
 
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(worksheet.get_all_records())
 
     if df.empty:
         return df
 
-    # LIMPIEZA BASE
+    # FILTROS BASE
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
-        (df["POTENCIA ACTIVA (KW)"].notna()) &
-        (df["POTENCIA ACTIVA (KW)"] != "")
+        (df["POTENCIA ACTIVA (KW)"].astype(str).str.strip() != "")
     ].copy()
 
+    # FECHA
     df["FECHA DEL REGISTRO"] = pd.to_datetime(
         df["FECHA DEL REGISTRO"],
         dayfirst=True,
         errors="coerce"
     )
 
+    # LIMPIEZA NUMÉRICA ROBUSTA
     cols_numeric = [
-        "HORAS OPERATIVAS",
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
-        "%CARGA PRIME"
+        "%CARGA PRIME",
+        "HORAS OPERATIVAS"
     ]
 
     for c in cols_numeric:
         if c in df.columns:
+            df[c] = (
+                df[c]
+                .astype(str)
+                .str.replace("%", "", regex=False)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
+    # NORMALIZAR %CARGA PRIME
+    if "%CARGA PRIME" in df.columns:
+        df["%CARGA PRIME"] = df["%CARGA PRIME"].apply(
+            lambda x: x * 100 if pd.notna(x) and x <= 1.5 else x
+        )
+
     return df
+
 
 df = load_data()
 
@@ -211,7 +234,7 @@ df_tabla = (
     .sort_values(["LOCACIÓN", "GENERADOR"])
 )
 
-df_tabla["%CARGA PRIME"] = df_tabla["%CARGA PRIME"].round(0).astype("Int64")
+df_tabla["%CARGA PRIME"] = df_tabla["%CARGA PRIME"].round(0)
 
 st.dataframe(
     df_tabla.style
@@ -220,8 +243,8 @@ st.dataframe(
             "HORAS OPERATIVAS": "{:,.2f}",
             "TOTAL GENERADO KW-H": "{:,.2f}",
             "CONSUMO (GLS)": "{:,.2f}",
-            "VALOR POR KW GENERADO": "USD {:,.2f}",
-            "%CARGA PRIME": "{}%"
+            "VALOR POR KW GENERADO": "{:,.2f}",
+            "%CARGA PRIME": "{:.0f}%"
         }),
     use_container_width=True
 )
@@ -231,7 +254,7 @@ st.dataframe(
 # ======================================================
 st.markdown("---")
 
-gen_loc = df_f.groupby(["FECHA DEL REGISTRO","LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
+gen_loc = df_f.groupby(["FECHA DEL REGISTRO", "LOCACIÓN"], as_index=False)["TOTAL GENERADO KW-H"].sum()
 fig_bar = px.bar(
     gen_loc,
     x="FECHA DEL REGISTRO",
