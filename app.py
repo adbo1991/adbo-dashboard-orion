@@ -30,7 +30,7 @@ COLOR_LOCACION = {
 }
 
 # ======================================================
-# CSS KPIs
+# CSS
 # ======================================================
 st.markdown("""
 <style>
@@ -68,20 +68,20 @@ def gauge_carga(valor, titulo):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=valor,
-        number={"suffix": "%", "font": {"size": 20}},
+        number={"suffix": "%", "font": {"size": 22}},
         title={"text": titulo, "font": {"size": 14}},
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
             "steps": [
-                {"range": [0, 60], "color": "#d1fae5"},
-                {"range": [60, 80], "color": "#4ade80"},
-                {"range": [80, 95], "color": "#fde68a"},
-                {"range": [95, 100], "color": "#ef4444"},
+                {"range": [0, 65], "color": "#22c55e"},
+                {"range": [65, 75], "color": "#ef4444"},
+                {"range": [75, 80], "color": "#fde047"},
+                {"range": [80, 100], "color": "#84cc16"},
             ],
         }
     ))
-    fig.update_layout(height=230, margin=dict(t=60, b=10))
+    fig.update_layout(height=240, margin=dict(l=10, r=10, t=50, b=10))
     return fig
 
 # ======================================================
@@ -91,7 +91,7 @@ st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
 # ======================================================
-# CARGA DE DATOS (SHEET PRIVADO)
+# CARGA DE DATOS
 # ======================================================
 @st.cache_data(ttl=900)
 def load_data():
@@ -114,12 +114,17 @@ def load_data():
     header, rows = values[0], values[1:]
 
     df_raw = pd.DataFrame(rows, columns=header)
-
     buffer = StringIO()
     df_raw.to_csv(buffer, index=False)
     buffer.seek(0)
 
-    df = pd.read_csv(buffer, decimal=",", thousands=".", engine="python")
+    df = pd.read_csv(
+        buffer,
+        engine="python",
+        decimal=",",
+        thousands=".",
+        on_bad_lines="skip"
+    )
 
     df = df[
         (df["REGISTRO CORRECTO"] == 1) &
@@ -127,21 +132,19 @@ def load_data():
     ]
 
     df["FECHA DEL REGISTRO"] = pd.to_datetime(
-        df["FECHA DEL REGISTRO"], dayfirst=True
+        df["FECHA DEL REGISTRO"],
+        dayfirst=True
     )
 
-    cols = [
+    for c in [
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
         "%CARGA PRIME",
         "HORAS OPERATIVAS"
-    ]
-
-    for c in cols:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+    ]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
 
@@ -149,112 +152,113 @@ def load_data():
 df = load_data()
 
 # ======================================================
-# KPIs HISTÓRICOS
+# FILTRO DÍA
 # ======================================================
-st.markdown("### 📊 KPIs Históricos (acumulado total)")
+fecha_dia = df["FECHA DEL REGISTRO"].max()
+df_dia = df[df["FECHA DEL REGISTRO"] == fecha_dia]
+
+st.info(f"📅 Día analizado: {fecha_dia.date()}")
+
+# ======================================================
+# KPIs GENERALES DEL DÍA
+# ======================================================
+st.markdown("## 📊 KPIs Generales del Día")
+
 k1, k2, k3, k4 = st.columns(4)
-
-k1.metric("🔋 Total Generado", format_number(df["TOTAL GENERADO KW-H"].sum(), 0))
-k2.metric("⛽ Consumo Total", format_number(df["CONSUMO (GLS)"].sum()))
-k3.metric("💰 Costos Totales", format_number(df["COSTOS DE GENERACIÓN USD"].sum(), True))
-k4.metric("⚡ Valor prom. KW", format_number(df["VALOR POR KW GENERADO"].mean(), True))
-
-st.markdown("---")
-
-# ======================================================
-# FILTROS
-# ======================================================
-fecha_max = df["FECHA DEL REGISTRO"].max()
-
-if "modo" not in st.session_state:
-    st.session_state.modo = "7d"
-
-c1, c2 = st.columns(2)
-if c1.button("📅 Últimos 7 días"):
-    st.session_state.modo = "7d"
-if c2.button("📌 Último registro"):
-    st.session_state.modo = "last"
-
-fecha_min = fecha_max if st.session_state.modo == "last" else fecha_max - pd.Timedelta(days=6)
-st.info(f"Período activo: {fecha_min.date()} → {fecha_max.date()}")
-
-df_f = df[(df["FECHA DEL REGISTRO"] >= fecha_min) & (df["FECHA DEL REGISTRO"] <= fecha_max)]
-
-# ======================================================
-# KPIs FILTRADOS
-# ======================================================
-st.markdown("### 📊 KPIs del período seleccionado")
-f1, f2, f3, f4 = st.columns(4)
-
-f1.metric("🔋 Generación", format_number(df_f["TOTAL GENERADO KW-H"].sum(), 0))
-f2.metric("⛽ Consumo", format_number(df_f["CONSUMO (GLS)"].sum()))
-f3.metric("💰 Costos", format_number(df_f["COSTOS DE GENERACIÓN USD"].sum(), True))
-f4.metric("⚡ Valor prom. KW", format_number(df_f["VALOR POR KW GENERADO"].mean(), True))
+k1.metric("🔋 Generación", format_number(df_dia["TOTAL GENERADO KW-H"].sum(), decimals=0))
+k2.metric("⛽ Consumo", format_number(df_dia["CONSUMO (GLS)"].sum()))
+k3.metric("💰 Costos", format_number(df_dia["COSTOS DE GENERACIÓN USD"].sum(), currency=True))
+k4.metric("⚡ Valor prom. KW", format_number(df_dia["VALOR POR KW GENERADO"].mean(), currency=True))
 
 st.markdown("---")
 
 # ======================================================
-# GRÁFICOS (NO SE CORTAN)
+# DONAS POR LOCACIÓN (DÍA)
 # ======================================================
-st.markdown("## 📈 Generación y Consumo")
+st.markdown("## 🍩 Distribución por Locación")
 
-gen_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
-fig_gen = px.line(
-    gen_day,
-    x="FECHA DEL REGISTRO",
-    y="TOTAL GENERADO KW-H",
-    markers=True,
-    title="⚡ Generación total diaria"
+gen_loc = df_dia.groupby("LOCACIÓN", as_index=False)["TOTAL GENERADO KW-H"].sum()
+con_loc = df_dia.groupby("LOCACIÓN", as_index=False)["CONSUMO (GLS)"].sum()
+cost_loc = df_dia.groupby("LOCACIÓN", as_index=False)["COSTOS DE GENERACIÓN USD"].sum()
+
+c1, c2, c3 = st.columns(3)
+
+c1.plotly_chart(px.pie(gen_loc, names="LOCACIÓN", values="TOTAL GENERADO KW-H", hole=0.55,
+                       title="🔋 Generación por Locación"), use_container_width=True)
+c2.plotly_chart(px.pie(con_loc, names="LOCACIÓN", values="CONSUMO (GLS)", hole=0.55,
+                       title="⛽ Consumo por Locación"), use_container_width=True)
+c3.plotly_chart(px.pie(cost_loc, names="LOCACIÓN", values="COSTOS DE GENERACIÓN USD", hole=0.55,
+                       title="💰 Costos USD por Locación"), use_container_width=True)
+
+st.markdown("---")
+
+# ======================================================
+# PROMEDIO KW POR LOCACIÓN
+# ======================================================
+st.markdown("## ⚡ Valor promedio KW por Locación")
+
+df_kw_loc = df_dia.groupby("LOCACIÓN", as_index=False)["VALOR POR KW GENERADO"].mean()
+
+st.dataframe(
+    df_kw_loc.style.format({"VALOR POR KW GENERADO": "{:,.2f}"}),
+    use_container_width=True
 )
-fig_gen.update_traces(text=gen_day["TOTAL GENERADO KW-H"], textposition="top center")
+
+st.markdown("---")
+
+# ======================================================
+# ÚLTIMOS 7 DÍAS
+# ======================================================
+st.markdown("## 📈 Tendencia últimos 7 días")
+
+fecha_min_7 = fecha_dia - pd.Timedelta(days=6)
+df_7 = df[df["FECHA DEL REGISTRO"] >= fecha_min_7]
+
+gen_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
+con_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
+
+fig_gen = px.line(gen_7, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H",
+                  markers=True, title="🔋 Generación diaria (7 días)")
 fig_gen.update_layout(
-    yaxis_title="TOTAL GENERADO KW-H",
-    margin=dict(t=80),
-    yaxis_tickfont=dict(size=14),
-    xaxis_tickfont=dict(size=13),
-    title_font_size=18
+    yaxis=dict(range=[0, gen_7["TOTAL GENERADO KW-H"].max() * 1.15],
+               tickfont=dict(size=14)),
+    xaxis=dict(tickfont=dict(size=14))
 )
 
-con_day = df_f.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
-fig_con = px.line(
-    con_day,
-    x="FECHA DEL REGISTRO",
-    y="CONSUMO (GLS)",
-    markers=True,
-    title="⛽ Consumo total diario"
-)
-fig_con.update_traces(text=con_day["CONSUMO (GLS)"], textposition="top center")
+fig_con = px.line(con_7, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)",
+                  markers=True, title="⛽ Consumo diario (7 días)")
 fig_con.update_layout(
-    margin=dict(t=80),
-    yaxis_tickfont=dict(size=14),
-    xaxis_tickfont=dict(size=13),
-    title_font_size=18
+    yaxis=dict(range=[0, con_7["CONSUMO (GLS)"].max() * 1.15],
+               tickfont=dict(size=14)),
+    xaxis=dict(tickfont=dict(size=14))
 )
 
 st.plotly_chart(fig_gen, use_container_width=True)
 st.plotly_chart(fig_con, use_container_width=True)
 
+st.markdown("---")
+
 # ======================================================
 # VELOCÍMETROS
 # ======================================================
-st.markdown("---")
 st.markdown("## 🔌 Carga Prime (%) por Generador")
 
-for loc in df_f["LOCACIÓN"].dropna().unique():
-    df_loc = df_f[df_f["LOCACIÓN"] == loc]
-
+for loc in df_dia["LOCACIÓN"].dropna().unique():
     with st.expander(f"📍 {loc}", expanded=True):
-        gens = df_loc["GENERADOR"].dropna().unique()
+        gens = df_dia[df_dia["LOCACIÓN"] == loc]["GENERADOR"].unique()
         cols = st.columns(min(4, len(gens)))
 
         for i, gen in enumerate(gens):
-            df_gen = df_loc[df_loc["GENERADOR"] == gen]
-            valor = df_gen["%CARGA PRIME"].mean() * 100
+            valor = (
+                df_dia[(df_dia["LOCACIÓN"] == loc) & (df_dia["GENERADOR"] == gen)]
+                ["%CARGA PRIME"].mean() * 100
+            )
 
-            if pd.notna(valor) and valor > 0:
+            if pd.notna(valor):
                 with cols[i % len(cols)]:
                     st.plotly_chart(gauge_carga(valor, gen), use_container_width=True)
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
+
 
 
