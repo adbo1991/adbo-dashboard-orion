@@ -147,7 +147,7 @@ def load_data():
         "VALOR POR KW GENERADO",
         "%CARGA PRIME",
         "HORAS OPERATIVAS",
-        "VOLTAJE"
+        "VOLTAJE (>=480V)"
     ]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -257,7 +257,7 @@ for loc in df_dia["LOCACIÓN"].dropna().unique():
             ]
 
             valor = df_tmp["%CARGA PRIME"].mean() * 100
-            voltaje = df_tmp["VOLTAJE"].mean()
+            voltaje = df_tmp["VOLTAJE (>=480V)"].mean()
 
             if pd.notna(valor):
                 with cols[i % len(cols)]:
@@ -267,7 +267,3 @@ for loc in df_dia["LOCACIÓN"].dropna().unique():
                     )
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
-
-
-
-
