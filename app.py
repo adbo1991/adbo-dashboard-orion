@@ -64,12 +64,15 @@ def format_number(value, currency=False, decimals=2):
     return f"USD {formatted}" if currency else formatted
 
 
-def gauge_carga(valor, titulo):
+def gauge_carga(valor, voltaje, titulo):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=valor,
         number={"suffix": "%", "font": {"size": 22}},
-        title={"text": titulo, "font": {"size": 14}},
+        title={
+            "text": f"{titulo}<br><span style='font-size:14px'>⚡ {voltaje:.0f} V</span>",
+            "font": {"size": 14}
+        },
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
@@ -81,13 +84,13 @@ def gauge_carga(valor, titulo):
             ],
         }
     ))
-    fig.update_layout(height=240, margin=dict(l=10, r=10, t=50, b=10))
+    fig.update_layout(height=260, margin=dict(l=10, r=10, t=60, b=10))
     return fig
 
 # ======================================================
 # TÍTULO
 # ======================================================
-st.title("ADBO SMART – CIP – Generación 52")
+st.title("ADBO SMART – CIP – Generación B52")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
 # ======================================================
@@ -114,6 +117,7 @@ def load_data():
     header, rows = values[0], values[1:]
 
     df_raw = pd.DataFrame(rows, columns=header)
+
     buffer = StringIO()
     df_raw.to_csv(buffer, index=False)
     buffer.seek(0)
@@ -142,7 +146,8 @@ def load_data():
         "COSTOS DE GENERACIÓN USD",
         "VALOR POR KW GENERADO",
         "%CARGA PRIME",
-        "HORAS OPERATIVAS"
+        "HORAS OPERATIVAS",
+        "VOLTAJE"
     ]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -160,7 +165,7 @@ df_dia = df[df["FECHA DEL REGISTRO"] == fecha_dia]
 st.info(f"📅 Día analizado: {fecha_dia.date()}")
 
 # ======================================================
-# KPIs GENERALES DEL DÍA
+# KPIs DEL DÍA
 # ======================================================
 st.markdown("## 📊 KPIs Generales del Día")
 
@@ -173,7 +178,7 @@ k4.metric("⚡ Valor prom. KW", format_number(df_dia["VALOR POR KW GENERADO"].me
 st.markdown("---")
 
 # ======================================================
-# DONAS POR LOCACIÓN (DÍA)
+# DONAS POR LOCACIÓN
 # ======================================================
 st.markdown("## 🛢️ Distribución por Locación")
 
@@ -183,36 +188,33 @@ cost_loc = df_dia.groupby("LOCACIÓN", as_index=False)["COSTOS DE GENERACIÓN US
 
 c1, c2, c3 = st.columns(3)
 
-c1.plotly_chart(px.pie(gen_loc, names="LOCACIÓN", values="TOTAL GENERADO KW-H", hole=0.55,
-                       title="🔋 Generación por Locación"), use_container_width=True)
-c2.plotly_chart(px.pie(con_loc, names="LOCACIÓN", values="CONSUMO (GLS)", hole=0.55,
-                       title="⛽ Consumo por Locación"), use_container_width=True)
-c3.plotly_chart(px.pie(cost_loc, names="LOCACIÓN", values="COSTOS DE GENERACIÓN USD", hole=0.55,
-                       title="💰 Costos USD por Locación"), use_container_width=True)
+def donut(fig, unidad):
+    fig.update_traces(
+        textinfo="label+percent+value",
+        texttemplate=f"<b>%{{label}}</b><br>%{{value:,.0f}} {unidad}<br>(%{{percent}})"
+    )
+    return fig
+
+fig1 = px.pie(gen_loc, names="LOCACIÓN", values="TOTAL GENERADO KW-H", hole=0.55,
+              title="🔋 Generación por Locación")
+c1.plotly_chart(donut(fig1, "kWh"), use_container_width=True)
+
+fig2 = px.pie(con_loc, names="LOCACIÓN", values="CONSUMO (GLS)", hole=0.55,
+              title="⛽ Consumo por Locación")
+c2.plotly_chart(donut(fig2, "GLS"), use_container_width=True)
+
+fig3 = px.pie(cost_loc, names="LOCACIÓN", values="COSTOS DE GENERACIÓN USD", hole=0.55,
+              title="💰 Costos USD por Locación")
+c3.plotly_chart(donut(fig3, "USD"), use_container_width=True)
 
 st.markdown("---")
 
 # ======================================================
-# PROMEDIO KW POR LOCACIÓN
-# ======================================================
-st.markdown("## ⚡ Valor promedio KW por Locación")
-
-df_kw_loc = df_dia.groupby("LOCACIÓN", as_index=False)["VALOR POR KW GENERADO"].mean()
-
-st.dataframe(
-    df_kw_loc.style.format({"VALOR POR KW GENERADO": "{:,.2f}"}),
-    use_container_width=True
-)
-
-st.markdown("---")
-
-# ======================================================
-# ÚLTIMOS 7 DÍAS
+# TENDENCIA 7 DÍAS
 # ======================================================
 st.markdown("## 📈 Tendencia últimos 7 días")
 
-fecha_min_7 = fecha_dia - pd.Timedelta(days=6)
-df_7 = df[df["FECHA DEL REGISTRO"] >= fecha_min_7]
+df_7 = df[df["FECHA DEL REGISTRO"] >= fecha_dia - pd.Timedelta(days=6)]
 
 gen_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
 con_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
@@ -249,16 +251,23 @@ for loc in df_dia["LOCACIÓN"].dropna().unique():
         cols = st.columns(min(4, len(gens)))
 
         for i, gen in enumerate(gens):
-            valor = (
-                df_dia[(df_dia["LOCACIÓN"] == loc) & (df_dia["GENERADOR"] == gen)]
-                ["%CARGA PRIME"].mean() * 100
-            )
+            df_tmp = df_dia[
+                (df_dia["LOCACIÓN"] == loc) &
+                (df_dia["GENERADOR"] == gen)
+            ]
+
+            valor = df_tmp["%CARGA PRIME"].mean() * 100
+            voltaje = df_tmp["VOLTAJE"].mean()
 
             if pd.notna(valor):
                 with cols[i % len(cols)]:
-                    st.plotly_chart(gauge_carga(valor, gen), use_container_width=True)
+                    st.plotly_chart(
+                        gauge_carga(valor, voltaje, gen),
+                        use_container_width=True
+                    )
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
+
 
 
 
