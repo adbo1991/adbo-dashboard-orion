@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ADBO SMART – CIP – Reporte de Generación Orión Bloque 52
+ADBO SMART – CIP – Reporte de Generación B52
 Autor: Alexander Becerra
 """
 
