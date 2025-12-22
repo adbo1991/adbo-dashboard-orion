@@ -77,10 +77,10 @@ def gauge_carga(valor, voltaje, titulo):
             "axis": {"range": [0, 100]},
             "bar": {"color": "#0f172a"},
             "steps": [
-                {"range": [0, 65], "color": "#22c55e"},
-                {"range": [65, 75], "color": "#ef4444"},
-                {"range": [75, 80], "color": "#fde047"},
-                {"range": [80, 100], "color": "#84cc16"},
+                {"range": [0, 65], "color": "#76a5af"},
+                {"range": [65, 75], "color": "#6aa84f"},
+                {"range": [75, 80], "color": "#e2b969"},
+                {"range": [80, 100], "color": "#9b2f2f"},
             ],
         }
     ))
