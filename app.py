@@ -16,7 +16,7 @@ from google.oauth2.service_account import Credentials
 # CONFIGURACIÓN GENERAL
 # ======================================================
 st.set_page_config(
-    page_title="ADBO SMART – CIP – Reporte de Generación Orión Bloque 52",
+    page_title="ADBO SMART – CIP – Reporte de Generación 52",
     layout="wide"
 )
 
@@ -87,7 +87,7 @@ def gauge_carga(valor, titulo):
 # ======================================================
 # TÍTULO
 # ======================================================
-st.title("ADBO SMART – CIP – Reporte de Generación Orión Bloque 52")
+st.title("ADBO SMART – CIP – Generación 52")
 st.caption("Datos actualizados automáticamente desde Google Sheets")
 
 # ======================================================
