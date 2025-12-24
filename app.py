@@ -11,6 +11,11 @@ import plotly.graph_objects as go
 from io import StringIO
 import gspread
 from google.oauth2.service_account import Credentials
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from io import BytesIO
 
 # ======================================================
 # CONFIGURACIÓN GENERAL
@@ -267,3 +272,73 @@ for loc in df_dia["LOCACIÓN"].dropna().unique():
                     )
 
 st.caption("ADBO SMART · Inteligencia de Negocios & IA")
+
+#%%
+
+def generar_pdf_reporte(df_dia, fecha_dia):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    elementos = []
+
+    # TÍTULO
+    elementos.append(Paragraph(
+        "<b>ADBO SMART – CIP – Reporte Diario B52</b>",
+        styles["Title"]
+    ))
+    elementos.append(Spacer(1, 12))
+
+    elementos.append(Paragraph(
+        f"<b>Fecha:</b> {fecha_dia.strftime('%d-%m-%Y')}",
+        styles["Normal"]
+    ))
+    elementos.append(Spacer(1, 12))
+
+    # KPIs
+    total_gen = df_dia["TOTAL GENERADO KW-H"].sum()
+    total_con = df_dia["CONSUMO (GLS)"].sum()
+    total_cost = df_dia["COSTOS DE GENERACIÓN USD"].sum()
+    valor_kw = df_dia["VALOR POR KW GENERADO"].mean()
+
+    elementos.append(Paragraph(f"🔋 Generación total: {total_gen:,.0f}", styles["Normal"]))
+    elementos.append(Paragraph(f"⛽ Consumo total: {total_con:,.2f}", styles["Normal"]))
+    elementos.append(Paragraph(f"💰 Costos USD: {total_cost:,.2f}", styles["Normal"]))
+    elementos.append(Paragraph(f"⚡ Valor prom. KW: {valor_kw:,.2f}", styles["Normal"]))
+    elementos.append(Spacer(1, 16))
+
+    # TABLA POR LOCACIÓN
+    tabla_df = (
+        df_dia.groupby("LOCACIÓN", as_index=False)
+        .agg({
+            "TOTAL GENERADO KW-H": "sum",
+            "CONSUMO (GLS)": "sum",
+            "COSTOS DE GENERACIÓN USD": "sum"
+        })
+    )
+
+    data = [tabla_df.columns.tolist()] + tabla_df.values.tolist()
+
+    tabla = Table(data, hAlign="LEFT")
+    tabla.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.grey),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
+        ("FONT", (0,0), (-1,0), "Helvetica-Bold"),
+        ("ALIGN", (1,1), (-1,-1), "RIGHT")
+    ]))
+
+    elementos.append(Paragraph("<b>Resumen por Locación</b>", styles["Heading2"]))
+    elementos.append(tabla)
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
+
+pdf_buffer = generar_pdf_reporte(df_dia, fecha_dia)
+
+st.download_button(
+    label="📄 Descargar PDF del día",
+    data=pdf_buffer,
+    file_name=f"Reporte_B52_{fecha_dia.strftime('%Y%m%d')}.pdf",
+    mime="application/pdf"
+)
