@@ -8,15 +8,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from io import BytesIO
 import plotly.io as pio
-from io import StringIO, BytesIO
 import gspread
 from google.oauth2.service_account import Credentials
 
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
@@ -24,43 +22,29 @@ from reportlab.lib import colors
 # CONFIGURACIÓN GENERAL
 # ======================================================
 st.set_page_config(
-    page_title="ADBO SMART – CIP – Reporte de Generación B52",
+    page_title="ADBO SMART – CIP – Generación B52",
     layout="wide"
 )
 
 # ======================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES SEGURAS
 # ======================================================
+def safe_sum(series):
+    return series.sum() if series.notna().any() else 0
+
+def safe_mean(series):
+    return series.mean() if series.notna().any() else 0
+
 def fig_to_image(fig, width, height):
     return BytesIO(
-        pio.to_image(
-            fig,
+        fig.to_image(
             format="png",
             width=width,
             height=height,
-            scale=2
+            scale=2,
+            engine="kaleido"  # 🔥 CLAVE PARA STREAMLIT CLOUD
         )
     )
-
-def gauge_carga(valor, voltaje, titulo):
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=valor,
-        number={"suffix": "%"},
-        title={"text": f"{titulo}<br><span style='font-size:12px'>⚡ {voltaje:.0f} V</span>"},
-        gauge={
-            "axis": {"range": [0, 100]},
-            "bar": {"color": "#0f172a"},
-            "steps": [
-                {"range": [0, 65], "color": "#76a5af"},
-                {"range": [65, 75], "color": "#6aa84f"},
-                {"range": [75, 80], "color": "#e2b969"},
-                {"range": [80, 100], "color": "#9b2f2f"},
-            ],
-        }
-    ))
-    fig.update_layout(height=260)
-    return fig
 
 # ======================================================
 # CARGA DE DATOS
@@ -98,9 +82,7 @@ def load_data():
         "TOTAL GENERADO KW-H",
         "CONSUMO (GLS)",
         "COSTOS DE GENERACIÓN USD",
-        "VALOR POR KW GENERADO",
-        "%CARGA PRIME",
-        "VOLTAJE (>=480V)"
+        "VALOR POR KW GENERADO"
     ]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -119,16 +101,17 @@ st.title("ADBO SMART – CIP – Generación B52")
 st.caption(f"📅 Día analizado: {fecha_dia.date()}")
 
 # ======================================================
-# KPIs
+# KPIs (ROBUSTOS)
 # ======================================================
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("🔋 Generación", f"{df_dia['TOTAL GENERADO KW-H'].sum():,.0f}")
-k2.metric("⛽ Consumo", f"{df_dia['CONSUMO (GLS)'].sum():,.2f}")
-k3.metric("💰 Costos", f"USD {df_dia['COSTOS DE GENERACIÓN USD'].sum():,.2f}")
-k4.metric("⚡ Valor prom. KW", f"USD {df_dia['VALOR POR KW GENERADO'].mean():,.2f}")
+
+k1.metric("🔋 Generación", f"{safe_sum(df_dia['TOTAL GENERADO KW-H']):,.0f}")
+k2.metric("⛽ Consumo", f"{safe_sum(df_dia['CONSUMO (GLS)']):,.2f}")
+k3.metric("💰 Costos", f"USD {safe_sum(df_dia['COSTOS DE GENERACIÓN USD']):,.2f}")
+k4.metric("⚡ Valor prom. KW", f"USD {safe_mean(df_dia['VALOR POR KW GENERADO']):,.2f}")
 
 # ======================================================
-# GRÁFICOS
+# GRÁFICOS DASHBOARD
 # ======================================================
 gen_loc = df_dia.groupby("LOCACIÓN", as_index=False)["TOTAL GENERADO KW-H"].sum()
 con_loc = df_dia.groupby("LOCACIÓN", as_index=False)["CONSUMO (GLS)"].sum()
@@ -139,6 +122,7 @@ fig_con_loc = px.pie(con_loc, names="LOCACIÓN", values="CONSUMO (GLS)", hole=0.
 fig_cost_loc = px.pie(cost_loc, names="LOCACIÓN", values="COSTOS DE GENERACIÓN USD", hole=0.55)
 
 df_7 = df[df["FECHA DEL REGISTRO"] >= fecha_dia - pd.Timedelta(days=6)]
+
 gen_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["TOTAL GENERADO KW-H"].sum()
 con_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum()
 
@@ -149,9 +133,9 @@ st.plotly_chart(fig_gen_7, use_container_width=True)
 st.plotly_chart(fig_con_7, use_container_width=True)
 
 # ======================================================
-# PDF HORIZONTAL
+# PDF HORIZONTAL – MISMO DASHBOARD
 # ======================================================
-def generar_pdf_reporte(df_dia, fecha_dia):
+def generar_pdf_reporte():
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -170,14 +154,14 @@ def generar_pdf_reporte(df_dia, fecha_dia):
     elementos.append(Paragraph(f"Fecha: {fecha_dia.strftime('%d-%m-%Y')}", styles["Normal"]))
     elementos.append(Spacer(1, 12))
 
-    kpi_table = Table([
-        ["🔋 Generación", f"{df_dia['TOTAL GENERADO KW-H'].sum():,.0f} kWh"],
-        ["⛽ Consumo", f"{df_dia['CONSUMO (GLS)'].sum():,.2f} GLS"],
-        ["💰 Costos", f"USD {df_dia['COSTOS DE GENERACIÓN USD'].sum():,.2f}"],
-        ["⚡ Valor KW", f"USD {df_dia['VALOR POR KW GENERADO'].mean():,.2f}"],
+    kpis = Table([
+        ["🔋 Generación", f"{safe_sum(df_dia['TOTAL GENERADO KW-H']):,.0f} kWh"],
+        ["⛽ Consumo", f"{safe_sum(df_dia['CONSUMO (GLS)']):,.2f} GLS"],
+        ["💰 Costos", f"USD {safe_sum(df_dia['COSTOS DE GENERACIÓN USD']):,.2f}"],
+        ["⚡ Valor KW", f"USD {safe_mean(df_dia['VALOR POR KW GENERADO']):,.2f}"]
     ], colWidths=[180]*4)
 
-    kpi_table.setStyle(TableStyle([
+    kpis.setStyle(TableStyle([
         ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
         ("ALIGN", (0,0), (-1,-1), "CENTER"),
         ("FONT", (0,0), (-1,-1), "Helvetica-Bold"),
@@ -186,16 +170,14 @@ def generar_pdf_reporte(df_dia, fecha_dia):
         ("TOPPADDING", (0,0), (-1,-1), 12),
     ]))
 
-    elementos.append(kpi_table)
+    elementos.append(kpis)
     elementos.append(Spacer(1, 16))
 
-    elementos.append(
-        Table([[
-            Image(fig_to_image(fig_gen_loc, 450, 350), 240, 200),
-            Image(fig_to_image(fig_con_loc, 450, 350), 240, 200),
-            Image(fig_to_image(fig_cost_loc, 450, 350), 240, 200),
-        ]])
-    )
+    elementos.append(Table([[
+        Image(fig_to_image(fig_gen_loc, 450, 350), 240, 200),
+        Image(fig_to_image(fig_con_loc, 450, 350), 240, 200),
+        Image(fig_to_image(fig_cost_loc, 450, 350), 240, 200),
+    ]]))
 
     elementos.append(Spacer(1, 20))
     elementos.append(Image(fig_to_image(fig_gen_7, 1100, 400), 760, 260))
@@ -207,11 +189,9 @@ def generar_pdf_reporte(df_dia, fecha_dia):
     return buffer
 
 
-pdf_buffer = generar_pdf_reporte(df_dia, fecha_dia)
-
 st.download_button(
-    label="📄 Descargar PDF horizontal",
-    data=pdf_buffer,
+    "📄 Descargar PDF horizontal",
+    data=generar_pdf_reporte(),
     file_name=f"Reporte_B52_{fecha_dia.strftime('%Y%m%d')}.pdf",
     mime="application/pdf"
 )
