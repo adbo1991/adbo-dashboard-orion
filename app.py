@@ -31,12 +31,16 @@ st.set_page_config(
 # ======================================================
 # FUNCIONES AUXILIARES
 # ======================================================
-def format_number(value, currency=False, decimals=2):
-    if pd.isna(value):
-        return "—"
-    formatted = f"{value:,.{decimals}f}"
-    return f"USD {formatted}" if currency else formatted
-
+def fig_to_image(fig, width, height):
+    return BytesIO(
+        pio.to_image(
+            fig,
+            format="png",
+            width=width,
+            height=height,
+            scale=2
+        )
+    )
 
 def gauge_carga(valor, voltaje, titulo):
     fig = go.Figure(go.Indicator(
@@ -111,8 +115,20 @@ df = load_data()
 fecha_dia = df["FECHA DEL REGISTRO"].max()
 df_dia = df[df["FECHA DEL REGISTRO"] == fecha_dia]
 
+st.title("ADBO SMART – CIP – Generación B52")
+st.caption(f"📅 Día analizado: {fecha_dia.date()}")
+
 # ======================================================
-# GRÁFICOS (MISMO DASHBOARD)
+# KPIs
+# ======================================================
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("🔋 Generación", f"{df_dia['TOTAL GENERADO KW-H'].sum():,.0f}")
+k2.metric("⛽ Consumo", f"{df_dia['CONSUMO (GLS)'].sum():,.2f}")
+k3.metric("💰 Costos", f"USD {df_dia['COSTOS DE GENERACIÓN USD'].sum():,.2f}")
+k4.metric("⚡ Valor prom. KW", f"USD {df_dia['VALOR POR KW GENERADO'].mean():,.2f}")
+
+# ======================================================
+# GRÁFICOS
 # ======================================================
 gen_loc = df_dia.groupby("LOCACIÓN", as_index=False)["TOTAL GENERADO KW-H"].sum()
 con_loc = df_dia.groupby("LOCACIÓN", as_index=False)["CONSUMO (GLS)"].sum()
@@ -129,18 +145,11 @@ con_7 = df_7.groupby("FECHA DEL REGISTRO", as_index=False)["CONSUMO (GLS)"].sum(
 fig_gen_7 = px.line(gen_7, x="FECHA DEL REGISTRO", y="TOTAL GENERADO KW-H", markers=True)
 fig_con_7 = px.line(con_7, x="FECHA DEL REGISTRO", y="CONSUMO (GLS)", markers=True)
 
-# ======================================================
-# EXPORTAR GRÁFICOS COMO IMÁGENES
-# ======================================================
-pio.write_image(fig_gen_loc, "gen_loc.png", width=450, height=350, scale=2)
-pio.write_image(fig_con_loc, "con_loc.png", width=450, height=350, scale=2)
-pio.write_image(fig_cost_loc, "cost_loc.png", width=450, height=350, scale=2)
-
-pio.write_image(fig_gen_7, "gen_7.png", width=1100, height=400, scale=2)
-pio.write_image(fig_con_7, "con_7.png", width=1100, height=400, scale=2)
+st.plotly_chart(fig_gen_7, use_container_width=True)
+st.plotly_chart(fig_con_7, use_container_width=True)
 
 # ======================================================
-# PDF HORIZONTAL – MISMO LAYOUT
+# PDF HORIZONTAL
 # ======================================================
 def generar_pdf_reporte(df_dia, fecha_dia):
     buffer = BytesIO()
@@ -157,22 +166,15 @@ def generar_pdf_reporte(df_dia, fecha_dia):
     styles = getSampleStyleSheet()
     elementos = []
 
-    # TÍTULO
     elementos.append(Paragraph("<b>ADBO SMART – CIP – Reporte Diario B52</b>", styles["Title"]))
     elementos.append(Paragraph(f"Fecha: {fecha_dia.strftime('%d-%m-%Y')}", styles["Normal"]))
     elementos.append(Spacer(1, 12))
 
-    # KPIs
-    total_gen = df_dia["TOTAL GENERADO KW-H"].sum()
-    total_con = df_dia["CONSUMO (GLS)"].sum()
-    total_cost = df_dia["COSTOS DE GENERACIÓN USD"].sum()
-    valor_kw = df_dia["VALOR POR KW GENERADO"].mean()
-
     kpi_table = Table([
-        ["🔋 Generación", f"{total_gen:,.0f} kWh"],
-        ["⛽ Consumo", f"{total_con:,.2f} GLS"],
-        ["💰 Costos", f"USD {total_cost:,.2f}"],
-        ["⚡ Valor KW", f"USD {valor_kw:,.2f}"],
+        ["🔋 Generación", f"{df_dia['TOTAL GENERADO KW-H'].sum():,.0f} kWh"],
+        ["⛽ Consumo", f"{df_dia['CONSUMO (GLS)'].sum():,.2f} GLS"],
+        ["💰 Costos", f"USD {df_dia['COSTOS DE GENERACIÓN USD'].sum():,.2f}"],
+        ["⚡ Valor KW", f"USD {df_dia['VALOR POR KW GENERADO'].mean():,.2f}"],
     ], colWidths=[180]*4)
 
     kpi_table.setStyle(TableStyle([
@@ -187,21 +189,18 @@ def generar_pdf_reporte(df_dia, fecha_dia):
     elementos.append(kpi_table)
     elementos.append(Spacer(1, 16))
 
-    # DONAS
-    donas = Table([
-        [
-            Image("gen_loc.png", 240, 200),
-            Image("con_loc.png", 240, 200),
-            Image("cost_loc.png", 240, 200)
-        ]
-    ])
-    elementos.append(donas)
-    elementos.append(Spacer(1, 20))
+    elementos.append(
+        Table([[
+            Image(fig_to_image(fig_gen_loc, 450, 350), 240, 200),
+            Image(fig_to_image(fig_con_loc, 450, 350), 240, 200),
+            Image(fig_to_image(fig_cost_loc, 450, 350), 240, 200),
+        ]])
+    )
 
-    # TENDENCIAS
-    elementos.append(Image("gen_7.png", 760, 260))
+    elementos.append(Spacer(1, 20))
+    elementos.append(Image(fig_to_image(fig_gen_7, 1100, 400), 760, 260))
     elementos.append(Spacer(1, 12))
-    elementos.append(Image("con_7.png", 760, 260))
+    elementos.append(Image(fig_to_image(fig_con_7, 1100, 400), 760, 260))
 
     doc.build(elementos)
     buffer.seek(0)
