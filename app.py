@@ -342,37 +342,3 @@ st.download_button(
     file_name=f"Reporte_B52_{fecha_dia.strftime('%Y%m%d')}.pdf",
     mime="application/pdf"
 )
-
-modo_impresion = st.toggle("🖨️ Modo impresión", value=False)
-
-if modo_impresion:
-    st.markdown("""
-    <style>
-    /* Ocultar botones */
-    button, .stDownloadButton {
-        display: none !important;
-    }
-
-    /* Quitar sombras */
-    div[data-testid="metric-container"] {
-        box-shadow: none !important;
-        border: 1px solid #ccc;
-    }
-
-    /* Forzar colores */
-    * {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-
-    /* Evitar cortes */
-    .js-plotly-plot {
-        page-break-inside: avoid;
-    }
-
-    /* Tamaño letras */
-    h1, h2, h3 {
-        font-size: 22px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
